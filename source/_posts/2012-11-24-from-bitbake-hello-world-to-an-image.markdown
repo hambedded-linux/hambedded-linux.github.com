@@ -248,7 +248,7 @@ mkdir meta-test
 We, then, need to inform bitbake that we have a layer. We will create
 *conf/bblayers.conf* with following content:
 
-`````` bash
+`````` bash bblayers.conf
 
 BBPATH := "${TOPDIR}"
 BBFILES ?= ""
@@ -262,7 +262,7 @@ ${TOPDIR} is not defined anywhere in our \*.conf files. This variable, when
 undefined, will be defined by bitbake itself in
 *lib/bb/parse/parse_py/ConfHandler.py:36*. 
 
-`````` python
+`````` python a code portion that sets TOPDIR in ConfHandler.py
 
 (...)
 
@@ -308,7 +308,7 @@ mkdir meta-test/conf
 
 And add *conf/layer.conf* with the following contents:
 
-`````` bash
+`````` bash layer.conf
 
 BBPATH .= ":${LAYERDIR}"
 
@@ -334,7 +334,7 @@ recipes-XXX/YYY/ directories within our LAYERDIR will get appended to BBFILES.
 Lets create our example recipe within the directory structure we have just
 defined above.  This recipe is named *firstrecipe*.
 
-`````` bash
+`````` bash create our first recipe
 
 mkdir -p meta-test/recipes-example/firstrecipe
 vim meta-test/recipes-example/firstrecipe/firstrecipe_0.0.bb
@@ -345,7 +345,7 @@ Using your favorite editor, create firstrecipe_0.0.bb. The version of a recipe
 is contained with its filename seperated by \_. Since we do not have version for
 our recipe, we make it 0.0. Our recipe will only contain a description.
 
-`````` bash
+`````` bash firstrecipe_0.0.bb
 
 DESCRIPTION = "Our first recipe for bitbake hello world"
 
@@ -353,7 +353,7 @@ DESCRIPTION = "Our first recipe for bitbake hello world"
 
 Finally, our conf, classes and meta-test directories are organized as below:
 
-`````` bash
+`````` bash meta-test directory structure
 .
 |-- classes
 |   |-- base.bbclass
@@ -406,7 +406,7 @@ Instead of providing an actual code, we will again just print a line in
 autotools package. Now, create *autotools.bbclass* in *classes/* directory with
 the following contents:
 
-`````` bash
+`````` bash autotools.bbclass
 autotools_do_configure() {
     bbnote "AUTOTOOLS_CONFIGURE"
 }
@@ -446,7 +446,7 @@ Now, please go to *temp* directory and see which code is run in configure, make,
 and install tasks. Without *inherit* keyword in our recipe, bitbake runs the
 following code on do_configure task:
 
-`````` bash
+`````` bash the code that is run without any inheritence
 
 #!/bin/sh -e
 export HOME="/Users/eren"
@@ -479,7 +479,7 @@ do_configure
 
 However, when autotools is inherited, the following code is run:
 
-`````` bash
+`````` bash the code that is run when autotools.bbclass is inherited
 
 #!/bin/sh -e
 export HOME="/Users/eren"
@@ -540,6 +540,17 @@ lot of code for fetching the source, patching, building, installing, producing
 ipk, deb, rpm packages, and making an image etc. OpenEmbedded also provides
 other features such as caching but it's out of the scope of this document.
 
+{% img https://www.yoctoproject.org/docs/current/yocto-project-qs/figures/yocto-environment.png %}
+
+Although this chart explains the general workflow of openembedded, it does not
+give an insight under the hood. How is source fetched, patched, configured, and
+installed? How is ipk, rpm, and deb created? How is image produced?
+
+Having an experience from bitbake hello world, in this section we will try to
+give an insight on how openembedded is structured, how packages are fetched,
+configured, installed, and how package creation is done. We will aim for a big
+picture in detail.
+
 **FIXME**: Mention the distinction/common things with yocto and openembedded
 
 Getting The Source
@@ -547,7 +558,7 @@ Getting The Source
 As of this date, the latest stable version of Yocto is *danny*. Cd into your
 working directory and get the source.
 
-`````` bash
+`````` bash get version danny and extract it
 
 wget http://downloads.yoctoproject.org/releases/yocto/yocto-1.3/poky-danny-8.0.tar.bz2
 tar xvf poky-danny-8.0.tar.bz2
@@ -558,8 +569,8 @@ cd poky-danny-8.0
 Let's move on to explaining the configuration files.
 
 
-Configuration
--------------
+An Overview of Bitbake.conf
+---------------------------
 As we have seen, bitbake.conf is parsed when bitbake is run. This file is among
 the important files in OE. The file is in *meta/conf/* directory and it includes a
 number of configuration variables that are used in metadatas and bb recipes.
@@ -571,7 +582,7 @@ modularity.
 Please do not miss the lines that make use of variables. This is what allows you
 to build an image for different architectures by only changing a few variables.
 
-`````` bash
+`````` bash relatively included configuration files in bitbake.conf
 
 include conf/build/${BUILD_SYS}.conf
 include conf/target/${TARGET_SYS}.conf
@@ -587,6 +598,10 @@ variable. It means that when bitbake is run, these configuration files will be
 searched in all layers you defined, and the first hit will be used. Remember that
 the path of all the layers are appended to BBBPATH variable.
 
+You can look at the other configuration files in depth.  99% of the variables
+used in bitbake recipes are defined in bitbake.conf and other files that are
+included. 
+
 Tasks
 -----
 In order to understand OE architecture, it's important to know which tasks are
@@ -595,7 +610,7 @@ logic and put common code. All bbclass files are in *meta/classes/* directory.
 Open base.bbclass file and search for "addtask" keyword. In base.bbclass, the
 following tasks are defined:
 
-`````` bash
+`````` bash tasks defined in base.bbclass
 
 ...
 addtask fetch
@@ -627,8 +642,7 @@ However, these are not the only tasks defined. Take attention to the "inherit"
 keywords on the top. There are tasks defined in {patch,staging}.bbclass files.
 Let's see which tasks are defined.
 
-
-`````` bash
+`````` bash tasks defined in {patch,staging}.bbclass
 
 // patch.bbclass
 addtask patch after do_unpack
@@ -645,7 +659,7 @@ that should be inherited automatically: *package_ipk*, *insane*, *debian
 devshell sstate license*, among which some of them define tasks. Here is a code
 portion that defines inheritence:
 
-`````` bash
+`````` bash inherited package definiton in defaultsetup.conf
 
 USER_CLASSES ?= ""
 PACKAGE_CLASSES ?= "package_ipk"
@@ -655,14 +669,402 @@ INHERIT += "${PACKAGE_CLASSES} ${USER_CLASSES} ${INHERIT_INSANE} ${INHERIT_DISTR
 
 ``````
 
-Additional to the tasks that we have covered so far, some of the classes that
-are automatically inherited also define tasks.
+Among these bbclass files, the one that is related with package management and
+that defines packaging tasks is *package_ipk.bbclass*. This bbclass inherits
+*package.bbclass*, which defines packaging logic just like we defined the build
+logic in bitbake hello world. Let's investigate package.bbclass and package_ipk.
 
-[openembedded]: http://localhost/
-[yoctoproject]: http://localhost/
+`````` bash meta/classes/package.bbclass
+
+...
+addtask package before do_build after do_install
+
+...
+addtask do_package_setscene
+
+...
+addtask package_write before do_build after do_package
+
+``````
+
+It should be noted that packaging starts after do_install is finished. Later,
+package writing logic is defined after packaging is started (do_package). With
+this packaging logic, any of the packaging type (ipk, deb, rpm) can be
+implemented. Since ipk is default and easier one, we will look into
+package_ipk.bbclass. It defines the following tasks:
+
+`````` bash meta/classes/package_ipk.bbclass
+...
+addtask do_package_write_ipk_setscene
+
+...
+python do_package_write_ipk () {
+    bb.build.exec_func("read_subpackage_metadata", d)
+    bb.build.exec_func("do_package_ipk", d)
+}
+
+...
+addtask package_write_ipk before do_package_write after do_package
+
+``````
+
+As you see, when package_write_ipk is run, it calls *read_subpackage_metadata*,
+and *do_package_ipk* to create ipk package. Other packaging classes do the
+similar. Debian defines package_write_deb, and do_package_deb is called; same
+for RPM.
+
+The functions called are outside the scope of this document. If you want to dig
+how package creating is done in detail, you can investigate it.
+
+Towards Creating an image
+-------------------------
+We covered the essentials of understanding OE. It does all the required work for
+building different types of packages (fetching, configuring, installing {cmake,
+autotools, etc}, making rpm, deb, ipk packages). We saw how package building
+logic is implemented. Since bitbake can handle recipe/task dependencies, and we
+have all the logic for building packages, image creation is done just like any
+other recipe processing. We will see how an image is created.
+
+### Package Groups ###
+You may be familiar with how package dependency relation can be used to provide
+virtual packages that have some functionality. This is achieved through the use
+of **package groups** in OE. Package group can be seen as a virtual package that
+have dependencies on packages that are related.
+
+Package groups reside in *recipes-core/packagegroups* directory. They are
+bitbake recipes just as "busybox" or "tinylogin" is. However, they do not have source to
+build, they only depend on other packages to provide functionality. The
+important one is packagegroup-core-boot, which groups required packages to be
+able to boot a system.
+
+`````` bash meta/recipes-core/packagegroups/packagegroup-core-boot.bb
+#
+# Copyright (C) 2007 OpenedHand Ltd.
+#
+
+SUMMARY = "Minimal boot requirements"
+DESCRIPTION = "The minimal set of packages required to boot the system"
+LICENSE = "MIT"
+DEPENDS = "virtual/kernel"
+PR = "r10"
+
+inherit packagegroup
+
+PACKAGE_ARCH = "${MACHINE_ARCH}"
+
+#
+# Set by the machine configuration with packages essential for device bootup
+#
+MACHINE_ESSENTIAL_EXTRA_RDEPENDS ?= ""
+MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS ?= ""
+
+# For backwards compatibility after rename
+RPROVIDES_${PN} = "task-core-boot"
+RREPLACES_${PN} = "task-core-boot"
+RCONFLICTS_${PN} = "task-core-boot"
+
+# Distro can override the following VIRTUAL-RUNTIME providers:
+VIRTUAL-RUNTIME_dev_manager ?= "udev"
+VIRTUAL-RUNTIME_login_manager ?= "tinylogin"
+VIRTUAL-RUNTIME_init_manager ?= "sysvinit"
+VIRTUAL-RUNTIME_initscripts ?= "initscripts"
+VIRTUAL-RUNTIME_keymaps ?= "keymaps"
+
+RDEPENDS_${PN} = "\
+    base-files \
+    base-passwd \
+    busybox \
+    ${@base_contains("MACHINE_FEATURES", "rtc", "busybox-hwclock", "", d)} \
+    ${VIRTUAL-RUNTIME_initscripts} \
+    ${@base_contains("MACHINE_FEATURES", "keyboard", "${VIRTUAL-RUNTIME_keymaps}", "", d)} \
+    modutils-initscripts \
+    netbase \
+    ${VIRTUAL-RUNTIME_login_manager} \
+    ${VIRTUAL-RUNTIME_init_manager} \
+    ${VIRTUAL-RUNTIME_dev_manager} \
+    ${VIRTUAL-RUNTIME_update-alternatives} \
+    ${MACHINE_ESSENTIAL_EXTRA_RDEPENDS}"
+
+RRECOMMENDS_${PN} = "\
+    ${MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS}"
+
+``````
+
+See RDEPENDS_${PN} variable. This recipe makes bitbake build the packages
+in RDEPENDS. The packages are also controlled by other variables such as
+MACHINE_FEATURES. If this variable contains rtc, or keyboard, a package is
+appended to RDEPENDS accordingly.
+
+### Core Image Minimal ###
+Image recipes reside in *recipes-core/images/* directory. In this document, we
+will see how core-image-minimal is built.
+
+`````` bash meta/recipes-core/images/core-image-minimal.bb
+
+DESCRIPTION = "A small image just capable of allowing a device to boot."
+
+IMAGE_INSTALL = "packagegroup-core-boot ${ROOTFS_PKGMANAGE_BOOTSTRAP} ${CORE_IMAGE_EXTRA_INSTALL}"
+
+IMAGE_LINGUAS = " "
+
+LICENSE = "MIT"
+
+inherit core-image
+
+IMAGE_ROOTFS_SIZE = "8192"
+
+# remove not needed ipkg informations
+ROOTFS_POSTPROCESS_COMMAND += "remove_packaging_data_files ; "
+
+``````
+
+As you see, this recipe sets IMAGE_INSTALL (**does not depend on!**)
+packagegroup-core-boot that we just saw and it inherits *core-image* bbclass. It
+also sets other variables that have an effect on image creation process (rootfs
+size, and postprocess command) Let's see what core-image does.
+
+`````` bash meta/classes/core-image.bbclass
+# Common code for generating core reference images
+#
+# Copyright (C) 2007-2011 Linux Foundation
+
+LIC_FILES_CHKSUM = "file://${COREBASE}/LICENSE;md5=3f40d7994397109285ec7b81fdeb3b58 \
+                    file://${COREBASE}/meta/COPYING.MIT;md5=3da9cfbcb788c80a0384361b4de20420"
+
+# IMAGE_FEATURES control content of the core reference images
+# 
+# By default we install packagegroup-core-boot and packagegroup-base packages - this gives us
+# working (console only) rootfs.
+#
+# Available IMAGE_FEATURES:
+#
+# - x11                 - X server
+# - x11-base            - X server with minimal environment
+# - x11-sato            - OpenedHand Sato environment
+# - tools-debug         - debugging tools
+# - tools-profile       - profiling tools
+# - tools-testapps      - tools usable to make some device tests
+# - tools-sdk           - SDK (C/C++ compiler, autotools, etc.)
+# - nfs-server          - NFS server
+# - ssh-server-dropbear - SSH server (dropbear)
+# - ssh-server-openssh  - SSH server (openssh)
+# - qt4-pkgs            - Qt4/X11 and demo applications
+# - package-management  - installs package management tools and preserves the package manager database
+# - debug-tweaks        - makes an image suitable for development, e.g. allowing passwordless root logins
+# - dev-pkgs            - development packages (headers, etc.) for all installed packages in the rootfs
+# - dbg-pkgs            - debug symbol packages for all installed packages in the rootfs
+# - doc-pkgs            - documentation packages for all installed packages in the rootfs
+#
+PACKAGE_GROUP_x11 = "packagegroup-core-x11"
+PACKAGE_GROUP_x11-base = "packagegroup-core-x11-base"
+PACKAGE_GROUP_x11-sato = "packagegroup-core-x11-sato"
+PACKAGE_GROUP_tools-debug = "packagegroup-core-tools-debug"
+PACKAGE_GROUP_tools-profile = "packagegroup-core-tools-profile"
+PACKAGE_GROUP_tools-testapps = "packagegroup-core-tools-testapps"
+PACKAGE_GROUP_tools-sdk = "packagegroup-core-sdk packagegroup-core-standalone-sdk-target"
+PACKAGE_GROUP_nfs-server = "packagegroup-core-nfs-server"
+PACKAGE_GROUP_ssh-server-dropbear = "packagegroup-core-ssh-dropbear"
+PACKAGE_GROUP_ssh-server-openssh = "packagegroup-core-ssh-openssh"
+PACKAGE_GROUP_package-management = "${ROOTFS_PKGMANAGE}"
+PACKAGE_GROUP_qt4-pkgs = "packagegroup-core-qt-demoapps"
+
+
+# IMAGE_FEATURES_REPLACES_foo = 'bar1 bar2'
+# Including image feature foo would replace the image features bar1 and bar2
+IMAGE_FEATURES_REPLACES_ssh-server-openssh = "ssh-server-dropbear"
+
+# IMAGE_FEATURES_CONFLICTS_foo = 'bar1 bar2'
+# An error exception would be raised if both image features foo and bar1(or bar2) are included
+
+python __anonymous() {
+    # Ensure we still have a splash screen for existing images
+    if base_contains("IMAGE_FEATURES", "apps-console-core", "1", "", d) == "1":
+        bb.warn("%s: apps-console-core in IMAGE_FEATURES is no longer supported; adding \"splash\" to enable splash screen" % d.getVar("PN", True))
+        d.appendVar("IMAGE_FEATURES", " splash")
+}
+
+
+CORE_IMAGE_BASE_INSTALL = '\
+    packagegroup-core-boot \
+    packagegroup-base-extended \
+    \
+    ${CORE_IMAGE_EXTRA_INSTALL} \
+    '
+
+CORE_IMAGE_EXTRA_INSTALL ?= ""
+
+IMAGE_INSTALL ?= "${CORE_IMAGE_BASE_INSTALL}"
+
+inherit image
+
+# Create /etc/timestamp during image construction to give a reasonably sane default time setting
+ROOTFS_POSTPROCESS_COMMAND += "rootfs_update_timestamp ; "
+
+# Zap the root password if debug-tweaks feature is not enabled
+ROOTFS_POSTPROCESS_COMMAND += '${@base_contains("IMAGE_FEATURES", "debug-tweaks", "", "zap_root_password ; ",d)}'
+# Allow openssh accept empty password login if both debug-tweaks and ssh-server-openssh are enabled
+ROOTFS_POSTPROCESS_COMMAND += '${@base_contains("IMAGE_FEATURES", "debug-tweaks ssh-server-openssh", "openssh_allow_empty_password; ", "",d)}'
+
+``````
+
+This bbclass does not have any affect on IMAGE_INSTALL because ?= is used to set
+the variable. Since we already set IMAGE_INSTALL variable in core-image-minimal
+before inheriting, bitbake will not change the content of IMAGE_INSTALL in
+core-image.bbclass. However, this bbclass sets postprocess command
+*rootfs_update_timestamp*, and a few others accordingly to IMAGE_FEATURES.
+
+**FIXME:** What is the use of PACKAGE_GROUP_foobar in image creation process?
+Explain it.
+
+### Where The Magic Happens, image.bbclass ###
+Finally, this is where the magic happens. In short, an image is created from
+ipk, deb, or rpm packages (since ipk is used in this document, we are continuing
+with ipk). The list of packages that should be installed on the image is
+processed by package_ipk.bbclass and these packages are installed using **opkg**
+to the destination rootfs directory.
+
+Since image.bbclass is long, I will include only the portion of the codes that
+is important to understand image creation process. Please have a look at
+image.bbclass.
+
+To create the image/install the packages to rootfs directory, the packages that
+we wanted to install on the image should be built first. However, we haven't
+defined any dependency so far, but only set IMAGE_INSTALL variable. 
+
+`````` bash meta/classes/image.bbclass
+...
+RDEPENDS += "${IMAGE_INSTALL} ${LINGUAS_INSTALL} ${NORMAL_FEATURE_INSTALL} ${ROOTFS_BOOTSTRAP_INSTALL}"
+
+...
+# definition of which packages should be installed on image. PACKAGE_INSTALL
+# variable is used in rootfs creation code in rootfs_ipk.bbclass
+export PACKAGE_INSTALL ?= "${IMAGE_INSTALL} ${ROOTFS_BOOTSTRAP_INSTALL} ${FEATURE_INSTALL}"
+
+...
+addtask rootfs before do_build
+
+``````
+
+This class depends on IMAGE_INSTALL and other variables so that the packages are
+first built. The class also adds a new task named *rootfs* before the default
+task (do_build) in bitbake so that it gets run by bitbake when all other tasks
+of the dependencies are run. do_rootfs the starting point of the image creation
+process.
+
+After checking some dirs and creating, do_rootfs calls a corresponding rootfs
+creation code accordingly to package management type. In our example, it calls
+**rootfs_ipk_do_rootfs** command, which is defined in **rootfs_ipk.bbclass**
+
+`````` bash meta/classes/image.bbclass, do_rootfs()
+
+rootfs_${IMAGE_PKGTYPE}_do_rootfs
+
+``````
+
+rootfs_ipk_do_rootfs() creates required directories for opkg to work, writes
+some status files, and updates itself using *opk-cl update*. After setting
+variables that are processed by ipk internally, **package_install_internal_ipk**
+is called. When packages have been successfully installed, the postprocess
+commands that you defined are run. (zap_root_password, rootfs_update_timestamp,
+openssh_allow_empty_password, etc)
+
+`````` bash meta/classes/rootfs_ipk.bbclass, rootfs_ipk_do_rootfs()
+
+...
+
+#install
+export INSTALL_PACKAGES_ATTEMPTONLY_IPK="${PACKAGE_INSTALL_ATTEMPTONLY}"
+export INSTALL_PACKAGES_LINGUAS_IPK="${LINGUAS_INSTALL}"
+export INSTALL_TASK_IPK="rootfs"
+
+export INSTALL_ROOTFS_IPK="${IMAGE_ROOTFS}"
+export INSTALL_CONF_IPK="${IPKGCONF_TARGET}"
+export INSTALL_PACKAGES_IPK="${PACKAGE_INSTALL}"
+
+#post install
+export D=${IMAGE_ROOTFS}
+export OFFLINE_ROOT=${IMAGE_ROOTFS}
+export IPKG_OFFLINE_ROOT=${IMAGE_ROOTFS}
+export OPKG_OFFLINE_ROOT=${IPKG_OFFLINE_ROOT}
+
+package_install_internal_ipk
+
+...
+${ROOTFS_POSTPROCESS_COMMAND}
+
+``````
+
+It is now the duty of package_install_internal_ipk to install the packages to
+rootfs directory (namely into image). It's defined in
+**meta/classes/package_ipk.bbclass**.
+
+`````` bash meta/classes/package_ipk.bbclass
+
+....
+
+# install a bunch of packages using opkg
+# the following shell variables needs to be set before calling this func:
+# INSTALL_ROOTFS_IPK - install root dir
+# INSTALL_CONF_IPK - configuration file
+# INSTALL_PACKAGES_IPK - packages to be installed
+# INSTALL_PACKAGES_ATTEMPTONLY_IPK - packages attemped to be installed only
+# INSTALL_PACKAGES_LINGUAS_IPK - additional packages for uclibc
+# INSTALL_TASK_IPK - task name
+
+package_install_internal_ipk() {
+
+	local target_rootfs="${INSTALL_ROOTFS_IPK}"
+	local conffile="${INSTALL_CONF_IPK}"
+	local package_attemptonly="${INSTALL_PACKAGES_ATTEMPTONLY_IPK}"
+	local package_linguas="${INSTALL_PACKAGES_LINGUAS_IPK}"
+	local task="${INSTALL_TASK_IPK}"
+
+	split_multilib_packages
+
+	local package_to_install="${INSTALL_PACKAGES_NORMAL_IPK}"
+	local package_multilib="${INSTALL_PACKAGES_MULTILIB_IPK}"
+
+	mkdir -p ${target_rootfs}${localstatedir}/lib/opkg/
+
+	local ipkg_args="-f ${conffile} -o ${target_rootfs} --force-overwrite --force_postinstall --prefer-arch-to-version"
+
+	opkg-cl ${ipkg_args} update
+
+	# Uclibc builds don't provide this stuff...
+	if [ x${TARGET_OS} = "xlinux" ] || [ x${TARGET_OS} = "xlinux-gnueabi" ] ; then
+		if [ ! -z "${package_linguas}" ]; then
+			for i in ${package_linguas}; do
+				opkg-cl ${ipkg_args} install $i
+			done
+		fi
+	fi
+
+	if [ ! -z "${package_to_install}" ]; then
+		opkg-cl ${ipkg_args} install ${package_to_install}
+	fi
+
+	if [ ! -z "${package_attemptonly}" ]; then
+		opkg-cl ${ipkg_args} install ${package_attemptonly} > "`dirname ${BB_LOGFILE}`/log.do_${task}_attemptonly.${PID}" || true
+	fi
+
+...
+
+``````
+
+As you see, package_install_internal_ipk creates
+*${target_rootfs}${localstatedir}/lib/opkg/* directory on the image and sets
+*${ipkg_args}* to use the directories in target rootfs as well as its
+configuration file on target rootfs. Afterwards, packages are installed by
+opkg-cl to target rootfs.
+
+**FIXME:** Where is repository for ipk packages defined? Where is the index file
+so that packages are found by ipk and are installed on target rootfs?
+
+[openembedded]: http://openembedded.org/
+[yoctoproject]: http://yoctoproject.org/
 [hhgttg-dont-panic]: https://en.wikipedia.org/wiki/Phrases_from_The_Hitchhiker%27s_Guide_to_the_Galaxy#Don.27t_Panic
-[bitbake]: http://localhost/
-[bitbake-doc]: http://localhost/
+[bitbake]: http://docs.openembedded.org/bitbake/html/
+[bitbake-doc]: http://docs.openembedded.org/bitbake/html/
 [bitbake-metadata]: http://docs.openembedded.org/bitbake/html/ch02.html
 [bitbake-user-manual]: http://docs.openembedded.org/bitbake/html/
 [bitbake-manual-parsing]: http://docs.openembedded.org/bitbake/html/ch02s03.html
