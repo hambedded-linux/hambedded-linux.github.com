@@ -716,7 +716,7 @@ for RPM.
 The functions called are outside the scope of this document. If you want to dig
 how package creating is done in detail, you can investigate it.
 
-Towards Creating an image
+Towards Creating an Image
 -------------------------
 We covered the essentials of understanding OE. It does all the required work for
 building different types of packages (fetching, configuring, installing {cmake,
@@ -906,6 +906,8 @@ ROOTFS_POSTPROCESS_COMMAND += '${@base_contains("IMAGE_FEATURES", "debug-tweaks"
 ROOTFS_POSTPROCESS_COMMAND += '${@base_contains("IMAGE_FEATURES", "debug-tweaks ssh-server-openssh", "openssh_allow_empty_password; ", "",d)}'
 
 ``````
+**FIXME:** What is the use of PACKAGE_GROUP_foobar in image creation process?
+Explain it.
 
 This bbclass does not have any affect on IMAGE_INSTALL because ?= is used to set
 the variable. Since we already set IMAGE_INSTALL variable in core-image-minimal
@@ -913,8 +915,8 @@ before inheriting, bitbake will not change the content of IMAGE_INSTALL in
 core-image.bbclass. However, this bbclass sets postprocess command
 *rootfs_update_timestamp*, and a few others accordingly to IMAGE_FEATURES.
 
-**FIXME:** What is the use of PACKAGE_GROUP_foobar in image creation process?
-Explain it.
+The most important thing to mention here is that this class inherits
+**image.bbclass** in which most of the work is done.
 
 ### Where The Magic Happens, image.bbclass ###
 Finally, this is where the magic happens. In short, an image is created from
