@@ -86,7 +86,7 @@ Now that we have built our bitbake, let's run it.
 BitBake Build Tool Core version 1.16.0, bitbake version 1.16.0
 ``````
 
-If you are using vim, please copy the files in *contrib/vim* directory
+If you are using vim, please copy the files in **contrib/vim** directory
 to ~/.vim so that you have a decent syntax highlighting support for
 bitbake configuration files, bbclass files, and bb recipes.
 
@@ -107,15 +107,15 @@ and see the ideas implemented.
 [emails][bitbake-helloworld-email] sent to yocto project mailing list.*
 
 Bitbake, when unpacked, includes a simple base.bbclass. You can find it
-in **classes/base.bbclass**. It includes a few functions for printing
-infos and warning, and defines 3 tasks: showdata, listtasks, build. 
+in **classes/** directory. It includes a few functions for printing
+infos and warning, and defines 3 tasks: *showdata, listtasks, build*.
 
 When bitbake is run to build a recipe, this **base.bbclass** file gets
 inherited by any recipe by default.  This is an ideal place for us to
 define our package building logic. If you are familiar with building
 programs for UNIX-like operating systems, you know that building a
-package includes fetching the source, unpacking, patching, configuring,
-compiling (making), and installing.  Let's now add a useful base for our
+package includes *fetching the source, unpacking, patching, configuring,
+compiling (making), and installing*.  Let's now add a useful base for our
 package building logic through defining tasks.
 
 
@@ -126,7 +126,7 @@ keywords). As you see in the example bbclass, the name of the task and
 the actual definition of the task is different. The code defining the
 task is prepended with **do_**. Tasks can be defined as python
 executables or shell. Lets define our package building logic. Edit
-*base.bbclass* and copy&paste the contents below:
+**base.bbclass** and copy&paste the contents below:
 
 `````` bash
 
@@ -197,7 +197,7 @@ way, it's easier to read the program logic from logs.
 
 Having logging code and building logic in one file is not modular.
 Wouldn't it be good to separate logging code from base? Let's create
-**logging.bbclass** in *classes/* directory. Logging.bbclass looks like
+**logging.bbclass** in **classes/** directory. Logging.bbclass looks like
 this: 
 
 `````` bash classes/logging.bbclass
@@ -266,9 +266,9 @@ BBLAYERS = " \
 
 ``````
 
-${TOPDIR} is not defined anywhere in our \*.conf files. This variable,
+*${TOPDIR}* is not defined anywhere in our \*.conf files. This variable,
 when undefined, will be defined by bitbake itself in
-*lib/bb/parse/parse_py/ConfHandler.py:36*. 
+**lib/bb/parse/parse_py/ConfHandler.py:36**. 
 
 `````` python a code portion that sets TOPDIR in ConfHandler.py
 
@@ -306,7 +306,7 @@ files. When relative path is given, the file is searched in the
 directories set in BBPATH, and the first hit will be included.
 
 Continuing with our layer, let's add our layer configuration. Create
-*conf/* directory first:
+**conf/** directory first:
 
 `````` bash
 
@@ -329,8 +329,8 @@ BBFILE_PRIORITY_test = "5"
 
 ``````
 
-We append our layer directory to *BBPATH* so that our layer directory is
-also searched when bitbake looks for a configuration file which is
+We append our layer directory to **BBPATH** so that our layer directory
+is also searched when bitbake looks for a configuration file which is
 relatively included.
 
 **BBFILES** variable is appended with our recipes. We tell bitbake that
@@ -364,7 +364,7 @@ DESCRIPTION = "Our first recipe for bitbake hello world"
 Finally, our conf, classes and meta-test directories are organized as
 below:
 
-`````` bash meta-test directory structure
+`````` bash our bitbake directory structure that includes meta-test
 .
 |-- classes
 |   |-- base.bbclass
@@ -393,11 +393,11 @@ directory and run bitbake with debug on.
 
 Congratulations! Your package building logic is in action! You can check
 the additional log information in **tmp/work/firstrecipe-0.0-r0/temp/**.
-Morover, the code run in each task is written to *temp* directory with
-name "run_TASK.PID".  Check these files to see what is run in each task.
-Bitbake includes the logs of all tasks in temp/ directory. Additionally,
-please look at **log.task_order** file, which includes our task order
-defined in base.
+Morover, the code run in each task is written to **temp** directory with
+name "run_*TASK.PID*".  Check these files to see what is run in each
+task.  Bitbake includes the logs of all tasks in temp/ directory.
+Additionally, please look at **log.task_order** file, which includes our
+task order defined in base.
 
 It is now up to you to add required code for tasks defined in base to
 get a functional build system (actual fetcher, patcher, extractor code
@@ -454,9 +454,9 @@ do_{configure,make,install} tasks.
 
 ``````
 
-Now, please go to *temp* directory and see which code is run in configure, make,
-and install tasks. Without **inherit** keyword in our recipe, bitbake runs the
-following code on do_configure task:
+Now, please go to **temp** directory and see which code is run in
+configure, make, and install tasks. Without **inherit** keyword in our
+recipe, bitbake runs the following code on **do_configure** task:
 
 `````` bash the code that is run without any inheritence
 
@@ -520,16 +520,17 @@ do_configure
 
 ``````
 
-Can you spot the difference? When autotools is inherited, do_configure()
-calls autotools_do_configure(). This is achieved by EXPORT_FUNCTIONS
-keyword.  EXPORT_FUNCTIONS maps each task in its argument to the
-functions in the bbclass prefixed with the name of that bbclass.  So,
-when EXPORT_FUNCTIONS is used in **autotools.bbclass**, **do_configure**
-is mapped to **autotools_do_configure**. We did the same in
-**base.bbclass** file. We used EXPORT_FUNCTIONS, it mapped each task to
-base_do_**TASKNAME**. This type of abstraction has an advantage that
-when we override a task, we do not lose the original task. For example,
-in **autotools_do_configure**, we can still call **base_do_configure**.
+Can you spot the difference? When autotools is inherited,
+**do_configure()** calls **autotools_do_configure()**. This is achieved
+by **EXPORT_FUNCTIONS** keyword.  EXPORT_FUNCTIONS maps each task in its
+argument to the functions in the bbclass prefixed with the name of that
+bbclass.  So, when EXPORT_FUNCTIONS is used in *autotools.bbclass*,
+*do_configure* is mapped to *autotools_do_configure*. We did the
+same in *base.bbclass* file. We used EXPORT_FUNCTIONS, it mapped each
+task to base_do_**TASKNAME**. This type of abstraction has an advantage
+that when we override a task, we do not lose the original task. For
+example, in *autotools_do_configure*, we can still call
+*base_do_configure*.
 
 **FIXME:** I need clarification on how export_functions works and how
 these tasks gets mapped.
@@ -569,8 +570,8 @@ openembedded
 
 Getting The Source
 ------------------
-As of this date, the latest stable version of Yocto is *danny*. Cd into
-your working directory and get the source.
+As of this date, the latest stable version of Yocto is **danny**. Cd
+into your working directory and get the source.
 
 `````` bash get version danny and extract it
 
@@ -585,10 +586,10 @@ Let's move on to explaining the configuration files.
 An Overview of Bitbake.conf
 ---------------------------
 As we have seen, bitbake.conf is parsed when bitbake is run. This file
-is among the important files in OE. The file is in *meta/conf/*
+is among the important files in OE. The file is in **meta/conf/**
 directory and it includes a number of configuration variables that are
 used in metadatas and bb recipes.  Bitbake.conf is not standalone and it
-includes other configuration files within *conf* directory. Please
+includes other configuration files within **conf** directory. Please
 navigate to the line no 677 in bitbake.conf and see that there are other
 configuration files appended into bitbake.conf for modularity.
 
@@ -622,7 +623,7 @@ Tasks
 In order to understand OE architecture, it's important to know which
 tasks are defined where. We have seen that base.bbclass is an ideal
 place to define our logic and put common code. All bbclass files are in
-*meta/classes/* directory.  Open base.bbclass file and search for
+**meta/classes/** directory.  Open base.bbclass file and search for
 "addtask" keyword. In base.bbclass, the following tasks are defined:
 
 `````` bash tasks defined in base.bbclass
@@ -734,13 +735,14 @@ The functions called are outside the scope of this document. If you want
 to dig how package creating is done in detail, you can investigate it.
 
 Towards Creating an Image
-------------------------- We covered the essentials of understanding OE.
-It does all the required work for building different types of packages
-(fetching, configuring, installing {cmake, autotools, etc}, making rpm,
-deb, ipk packages). We saw how package building logic is implemented.
-Since bitbake can handle recipe/task dependencies, and we have all the
-logic for building packages, image creation is done just like any other
-recipe processing. We will see how an image is created.
+------------------------- 
+We covered the essentials of understanding OE.  It does all the required
+work for building different types of packages (fetching, configuring,
+installing {cmake, autotools, etc}, making rpm, deb, ipk packages). We
+saw how package building logic is implemented.  Since bitbake can handle
+recipe/task dependencies, and we have all the logic for building
+packages, image creation is done just like any other recipe processing.
+We will see how an image is created.
 
 ### Package Groups ###
 You may be familiar with how package dependency relation can be used to
@@ -749,7 +751,7 @@ through the use of **package groups** in OE. Package group can be seen
 as a virtual package that have dependencies on packages that are
 related.
 
-Package groups reside in *recipes-\*/packagegroups* directory. They
+Package groups reside in **recipes-\*/packagegroups** directory. They
 are bitbake recipes just as "busybox" or "tinylogin" is. However, they
 do not have source to build, they only depend on other packages to
 provide functionality. Below is the list of available packagegroups in
@@ -1170,7 +1172,7 @@ As you see, package_install_internal_ipk creates
 **${target_rootfs}${localstatedir}/lib/opkg/** directory on the image and
 sets *${ipkg_args}* to use the directories and configuration files in
 target rootfs. Afterwards, packages are installed by opkg-cl to target
-rootfs as seen in line FIXME above.
+rootfs as seen in line **41** above.
 
 **FIXME:** Where is repository for ipk packages defined? Where is the index file
 so that packages are found by ipk and are installed on target rootfs?
