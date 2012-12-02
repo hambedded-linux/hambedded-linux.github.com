@@ -20,8 +20,9 @@ the image creation process at its basics.
 
 <!--more-->
 
-**NOTE**: This document is draft and incomplete. OpenEmbedded part is
-still being written.
+**NOTE**: This document is draft. Although 95% of it is ready, it needs
+some additional information to be written. See *FIXME* keywords. Your
+contribution is welcomed for these.
 
 Table Of Contents
 =================
