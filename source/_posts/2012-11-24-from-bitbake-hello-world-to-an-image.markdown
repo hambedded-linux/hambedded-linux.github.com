@@ -72,7 +72,8 @@ Instead of installing bitbake, we will run it in its build directory.
 Now, build bitbake:
 
 `````` bash
-# FIXME: how to disable xml doc generation? It takes a little time for this doc.
+# FIXME: how to disable xml doc generation?
+# It takes a little time for this doc.
 python setup.py build
 export PYTHONPATH=`pwd`/build/lib
 ``````
@@ -122,9 +123,9 @@ Defining a task is achieved through **addtask** keyword followed by the
 name of the task as well as its dependency relation (before/after
 keywords). As you see in the example bbclass, the name of the task and
 the actual definition of the task is different. The code defining the
-task is prepended with **do_**. Tasks can be defined as python executables
-or shell. Lets define our package building logic. Edit *base.bbclass*
-and copy&paste the contents below:
+task is prepended with **do_**. Tasks can be defined as python
+executables or shell. Lets define our package building logic. Edit
+*base.bbclass* and copy&paste the contents below:
 
 `````` bash
 
@@ -754,7 +755,7 @@ provide functionality. Below is the list of available packagegroups in
 openembedded-core. Do not be confused with a lot of package groups. We
 will only investigate only one of them.
 
-`````` available package groups in openembedded-core
+`````` bash available package groups in openembedded-core
 % find meta/recipes-*/packagegroups -type d | xargs tree --charset=utf
 
 meta/recipes-core/packagegroups
@@ -863,7 +864,7 @@ Image recipes reside in *recipes-\*/images/* directory. There are
 different image recipes for different purposes. Image recipes in
 openembedded core are listed below:
 
-`````` bash
+`````` bash available image recipes in openembedded-core
 % find meta/recipes-*/images -type d | xargs tree --charset=utf
 
 meta/recipes-core/images
@@ -1165,7 +1166,7 @@ package_install_internal_ipk() {
 ``````
 
 As you see, package_install_internal_ipk creates
-*${target_rootfs}${localstatedir}/lib/opkg/* directory on the image and
+**${target_rootfs}${localstatedir}/lib/opkg/** directory on the image and
 sets *${ipkg_args}* to use the directories and configuration files in
 target rootfs. Afterwards, packages are installed by opkg-cl to target
 rootfs as seen in line FIXME above.
@@ -1188,10 +1189,11 @@ I hope you find the document useful for understanding bitbake, and
 openembedded. Please do not hesitate to comment or e-mail me about the
 document for questions or suggestions.
 
-Eren Türkay, TA1AET
-(eren .--.-. hambedded.org)
+<br />
+  
+**Eren Türkay, TA1AET** &lt;eren .--.-. hambedded.org&gt; <br />
+**Istanbul / Turkey**
 
-Istanbul / Turkey
 
 [openembedded]: http://openembedded.org/
 [yoctoproject]: http://yoctoproject.org/
