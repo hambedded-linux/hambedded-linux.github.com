@@ -114,3 +114,9 @@ Layer Index][oe-layer-index] page.
 Author
 ======
 Eren Türkay, TA1AET, (eren .--.-. hambedded.org)
+
+<script src="//platform.linkedin.com/in.js"
+type="text/javascript"></script>
+<script type="IN/MemberProfile"
+data-id="http://www.linkedin.com/in/erenturkay" data-format="inline"
+data-related="false"></script>
