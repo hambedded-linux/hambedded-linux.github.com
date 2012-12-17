@@ -447,9 +447,16 @@ inherit autotools
 ``````
 
 We are now ready to build our firstrecipe using different
-do_{configure,make,install} tasks.
+do_{configure,make,install} tasks. Before building our recipe with
+autotools, we need to remove **tmp/** directory for changes to take
+effect. Bitbake caches the recipe files, without removing tmp directory,
+autotools won't be used and the tasks won't be overwritten.
 
-`````` bash
+`````` bash remove tmp directory
+rm -rfv tmp/
+``````
+
+`````` bash build out package with autotools
 
 ./bin/bitbake firstrecipe -vDD
 
