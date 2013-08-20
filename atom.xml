@@ -1,0 +1,1727 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Hambedded Linux]]></title>
+  <link href="http://hambedded-linux.github.com/atom.xml" rel="self"/>
+  <link href="http://hambedded-linux.github.com/"/>
+  <updated>2013-08-20T15:21:28+02:00</updated>
+  <id>http://hambedded-linux.github.com/</id>
+  <author>
+    <name><![CDATA[Eren Türkay]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[Waiting For Removable Media Problem]]></title>
+    <link href="http://hambedded-linux.github.com/blog/2013/08/20/waiting-for-removable-media-problem/"/>
+    <updated>2013-08-20T10:38:00+02:00</updated>
+    <id>http://hambedded-linux.github.com/blog/2013/08/20/waiting-for-removable-media-problem</id>
+    <content type="html"><![CDATA[<p>While I was working on <a href="https://github.com/hambedded-linux/meta-alix3d3">BSP</a> for <a href="http://pcengines.ch/alix3d3.htm">ALIX 3D3</a>, I had to
+configure the kernel fragments for the board. I started with standard
+x86 kernel configuration provided by linux-yocto package. This standard
+configuration includes very basic fragments to at least boot a regular
+x86 system. For example, it enables network, usb, pci and sound.</p>
+
+<p>As <a href="http://pcengines.ch/alix3d3.htm">ALIX 3D3</a> is a compatible x86 machine, I got the standard
+configuration and enabled ALIX specific configuration such as CS5536
+companion chip, sound, AMD Geode random number generator, Geode LX
+Framebuffer, etc. After enabling these configuration, I built
+core-image-minimal live image and <a href="https://en.wikipedia.org/wiki/Dd_(Unix)">dd</a>‘ed the image into CF Card.
+After booting the machine, I saw that the boot process is stuck and the
+only thing in the screen is <strong>“waiting for removable media”</strong>.</p>
+
+<!--more-->
+
+<p>I knew that this was caused by the init script and took a look at the
+script. Clearly, it couldn’t find the disk (/dev/sda) and couldn’t find
+the root image in the disk afterwards. Later on, I checked dmesg output
+and there was nothing related with disks. Kernel could not probe them.
+After checking the kernel parameters, I enabled CS5536 PATA support. Now
+sda could be seen in the dmesg output. However, I still had the same
+problem even if there was no problem with the disks. My attention, then,
+was turned to udev.</p>
+
+<p>After hours of debugging udev and its rules, I found out that the udev
+version that I use <em>(&gt;= udev 182)</em> requires <strong>CONFIG_DEVTMPFS</strong> kernel
+parameter to be present to work properly. After adding the following
+kernel parameters, udev successfully probed/mounted disks and the boot
+process went OK.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+</pre></td><td class="code"><pre><code class=""><span class="line">CONFIG_DEVTMPFS=y
+</span><span class="line">CONFIG_DEVTMPFS_MOUNT=y</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>When you are working on BSP, or kernel parameters, be sure to enable
+above parameters in the kernel. Otherwise, udev will not work properly.</p>
+
+<p>Happy hacking!</p>
+
+<p><em>PS: Yocto Project version is dylan. This blog post was written dylan branch
+in mind</em></p>
+
+]]></content>
+  </entry>
+  
+  <entry>
+    <title type="html"><![CDATA[From Bitbake Hello World To an Image]]></title>
+    <link href="http://hambedded-linux.github.com/blog/2012/11/24/from-bitbake-hello-world-to-an-image/"/>
+    <updated>2012-11-24T17:49:00+01:00</updated>
+    <id>http://hambedded-linux.github.com/blog/2012/11/24/from-bitbake-hello-world-to-an-image</id>
+    <content type="html"><![CDATA[<p><a href="http://openembedded.org/">OpenEmbedded</a> and <a href="http://yoctoproject.org/">Yocto</a> are based on
+<a href="http://docs.openembedded.org/bitbake/html/">bitbake</a> build system. In order to understand the structure of
+OE, it is beneficial to have an understanding of bitbake to some degree
+along with the tasks and classes defined in OE. This document will,
+hopefully, present the “big picture” of creating an image using
+OpenEmbedded and Yocto. It will start from a very basic bitbake project,
+explain the important concepts, delve into OE classes, and finally show
+the image creation process at its basics.</p>
+
+<!--more-->
+
+<p><strong>NOTE</strong>: This document is draft and incomplete. OpenEmbedded part is
+still being written.</p>
+
+<h1 id="table-of-contents">Table Of Contents</h1>
+<ul id="markdown-toc">
+  <li><a href="#table-of-contents">Table Of Contents</a></li>
+  <li><a href="#bitbake">Bitbake</a>    <ul>
+      <li><a href="#obtaining-bitbake">Obtaining Bitbake</a></li>
+      <li><a href="#hello-world-project">Hello World Project</a>        <ul>
+          <li><a href="#defining-the-tasks">Defining The Tasks</a></li>
+          <li><a href="#adding-an-example-layer">Adding an Example Layer</a></li>
+          <li><a href="#overriding-tasks">Overriding Tasks</a></li>
+        </ul>
+      </li>
+      <li><a href="#summary">Summary</a></li>
+    </ul>
+  </li>
+  <li><a href="#understanding-openembedded">Understanding OpenEmbedded</a>    <ul>
+      <li><a href="#getting-the-source">Getting The Source</a></li>
+      <li><a href="#an-overview-of-bitbakeconf">An Overview of Bitbake.conf</a></li>
+      <li><a href="#tasks">Tasks</a>        <ul>
+          <li><a href="#package-groups">Package Groups</a></li>
+          <li><a href="#core-image-minimal">Core Image Minimal</a></li>
+          <li><a href="#where-the-magic-happens-imagebbclass">Where The Magic Happens, image.bbclass</a></li>
+        </ul>
+      </li>
+      <li><a href="#summary-1">Summary</a></li>
+    </ul>
+  </li>
+</ul>
+
+<h1 id="bitbake">Bitbake</h1>
+<p>BitBake is, at its simplest, a tool for executing tasks and managing
+metadata <a href="http://docs.openembedded.org/bitbake/html/">[1]</a>. What bitbake does, basically, is to
+handle the tasks defined in bitbake metadata (.bbclass, .bb), resolve
+their task dependencies, put them in right order and run them. You can
+think of a task as a function that can be set to run before or after
+another function (or task). A task can also have additional flag(s)
+assigned besides the dependency information. Flags are basically
+variables assigned to variables or functions (tasks) that tell
+additional info about them. All of these will be explained throughout
+this document. <a href="https://en.wikipedia.org/wiki/Phrases_from_The_Hitchhiker%27s_Guide_to_the_Galaxy#Don.27t_Panic">Don’t panic!</a></p>
+
+<p>Before we begin our hello world example, it is important to note that
+what bitbake parses is a bitbake metadata. Hence, it has its own syntax,
+variable assignments, function definitions, etc. Do not confuse it with
+a regular shell scripts, although bitbake syntax resembles to them.
+Before proceeding, please read <a href="http://docs.openembedded.org/bitbake/html/ch02.html">metadata section</a> of
+<a href="http://docs.openembedded.org/bitbake/html/">bitbake user manual</a>.</p>
+
+<h2 id="obtaining-bitbake">Obtaining Bitbake</h2>
+<p>Let’s obtain the bitbake source and extract it. As of this date, the
+latest bitbake release is 1.16.0.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">wget http://git.openembedded.org/bitbake/snapshot/bitbake-1.16.0.tar.bz2
+</span><span class="line">tar xvf bitbake-1.16.0.tar.bz2
+</span><span class="line"><span class="nb">cd </span>bitbake-1.16.0
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>Instead of installing bitbake, we will run it in its build directory.
+Now, build bitbake:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line"><span class="c"># FIXME: how to disable xml doc generation? It takes a little time for this doc.</span>
+</span><span class="line">python setup.py build
+</span><span class="line"><span class="nb">export </span><span class="nv">PYTHONPATH</span><span class="o">=</span><span class="sb">`</span><span class="nb">pwd</span><span class="sb">`</span>/build/lib
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>Now that we have built our bitbake, let’s run it.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">./bin/bitbake --version
+</span><span class="line">BitBake Build Tool Core version 1.16.0, bitbake version 1.16.0
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>If you are using vim, please copy the files in <em>contrib/vim</em> directory
+to ~/.vim so that you have a decent syntax highlighting support for
+bitbake configuration files, bbclass files, and bb recipes.</p>
+
+<p>We are now ready to create our helloworld bitbake project.</p>
+
+<h2 id="hello-world-project">Hello World Project</h2>
+<p>Starting with the fundamentals, we will gradually evolve and see how
+bitbake works by playing with it. In this part, we will cover what a
+task is, how it is defined, how a task can be overwritten, what is a
+flag, and how a flag is used by bitbake. With these informations in
+mind, we will also see how all of these can come together to form a
+useful build system that creates embedded linux images. After we have
+covered the concepts written above, we will delve into OpenEmbedded code
+and see the ideas implemented.</p>
+
+<p><em>NOTE: This part is written with the help of the information in
+<a href="http://www.mail-archive.com/yocto@yoctoproject.org/msg09379.html">emails</a> sent to yocto project mailing list.</em></p>
+
+<p>Bitbake, when unpacked, includes a simple base.bbclass. You can find it
+in <strong>classes/base.bbclass</strong>. It includes a few functions for printing
+infos and warning, and defines 3 tasks: showdata, listtasks, build. </p>
+
+<p>When bitbake is run to build a recipe, this <strong>base.bbclass</strong> file gets
+inherited by any recipe by default.  This is an ideal place for us to
+define our package building logic. If you are familiar with building
+programs for UNIX-like operating systems, you know that building a
+package includes fetching the source, unpacking, patching, configuring,
+compiling (making), and installing.  Let’s now add a useful base for our
+package building logic through defining tasks.</p>
+
+<h3 id="defining-the-tasks">Defining The Tasks</h3>
+<p>Defining a task is achieved through <strong>addtask</strong> keyword followed by the
+name of the task as well as its dependency relation (before/after
+keywords). As you see in the example bbclass, the name of the task and
+the actual definition of the task is different. The code defining the
+task is prepended with <strong>do_</strong>. Tasks can be defined as python executables
+or shell. Lets define our package building logic. Edit <em>base.bbclass</em>
+and copy&amp;paste the contents below:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+<span class="line-number">15</span>
+<span class="line-number">16</span>
+<span class="line-number">17</span>
+<span class="line-number">18</span>
+<span class="line-number">19</span>
+<span class="line-number">20</span>
+<span class="line-number">21</span>
+<span class="line-number">22</span>
+<span class="line-number">23</span>
+<span class="line-number">24</span>
+<span class="line-number">25</span>
+<span class="line-number">26</span>
+<span class="line-number">27</span>
+<span class="line-number">28</span>
+<span class="line-number">29</span>
+<span class="line-number">30</span>
+<span class="line-number">31</span>
+<span class="line-number">32</span>
+<span class="line-number">33</span>
+<span class="line-number">34</span>
+<span class="line-number">35</span>
+<span class="line-number">36</span>
+<span class="line-number">37</span>
+<span class="line-number">38</span>
+<span class="line-number">39</span>
+<span class="line-number">40</span>
+<span class="line-number">41</span>
+<span class="line-number">42</span>
+<span class="line-number">43</span>
+<span class="line-number">44</span>
+<span class="line-number">45</span>
+<span class="line-number">46</span>
+<span class="line-number">47</span>
+<span class="line-number">48</span>
+<span class="line-number">49</span>
+<span class="line-number">50</span>
+<span class="line-number">51</span>
+<span class="line-number">52</span>
+<span class="line-number">53</span>
+<span class="line-number">54</span>
+<span class="line-number">55</span>
+<span class="line-number">56</span>
+<span class="line-number">57</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">bbplain<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;$*&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">bbnote<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;NOTE: $*&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">bbwarn<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;WARNING: $*&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">bberror<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;ERROR: $*&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">bbfatal<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;ERROR: $*&quot;</span>
+</span><span class="line">	<span class="nb">exit </span>1
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">addtask fetch
+</span><span class="line">python base_do_fetch<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bb.note<span class="o">(</span><span class="s2">&quot;BASE_DO_FETCH&quot;</span><span class="o">)</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">addtask unpack after do_fetch
+</span><span class="line">python base_do_unpack<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bb.note<span class="o">(</span><span class="s2">&quot;BASE_DO_UNPACK&quot;</span><span class="o">)</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">addtask patch after do_unpack
+</span><span class="line">base_do_patch<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bbnote <span class="s2">&quot;BASE_DO_PATCH&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">addtask configure after do_patch
+</span><span class="line">base_do_configure<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bbnote <span class="s2">&quot;BASE_DO_CONFIGURE&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">addtask make after do_configure
+</span><span class="line">base_do_make<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bbnote <span class="s2">&quot;BASE_DO_MAKE&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">addtask install after do_make
+</span><span class="line">base_do_install<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bbnote <span class="s2">&quot;BASE_DO_INSTALL&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">addtask build after do_install
+</span><span class="line">base_do_build<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bbnote <span class="s2">&quot;DO_BUILD&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">EXPORT_FUNCTIONS do_fetch do_unpack do_patch do_configure do_make do_install do_build
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>As you see, I’ve defined the first functions as python, and the others
+as shells to be an example. I also printed only the function names
+instead of actually doing useful stuff for building a package. In that
+way, it’s easier to read the program logic from logs.</p>
+
+<p>Having logging code and building logic in one file is not modular.
+Wouldn’t it be good to separate logging code from base? Let’s create
+<strong>logging.bbclass</strong> in <em>classes/</em> directory. Logging.bbclass looks like
+this: </p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>classes/logging.bbclass</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+<span class="line-number">15</span>
+<span class="line-number">16</span>
+<span class="line-number">17</span>
+<span class="line-number">18</span>
+<span class="line-number">19</span>
+<span class="line-number">20</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">bbplain<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;$*&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">bbnote<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;NOTE: $*&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">bbwarn<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;WARNING: $*&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">bberror<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;ERROR: $*&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">bbfatal<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;ERROR: $*&quot;</span>
+</span><span class="line">	<span class="nb">exit </span>1
+</span><span class="line"><span class="o">}</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>We will just put <strong>inherit logging</strong> at the top of base.bbclass. When
+base.bbclass is parsed, logging.bbclass is now automatically inherited.
+Inheritence is one of the many ways of modularity in bitbake.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>top of the base.bbclass which inherits logging</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">inherit logging
+</span><span class="line">
+</span><span class="line">addtask fetch
+</span><span class="line">python base_do_fetch<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bb.note<span class="o">(</span><span class="s2">&quot;BASE_DO_FETCH&quot;</span><span class="o">)</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">...
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<h3 id="adding-an-example-layer">Adding an Example Layer</h3>
+<p>Having the program building logic and logging written, we need to add a
+layer to start experimenting with building. First, create a directory
+named <strong>meta-test</strong>, which will be our layer directory.  </p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">mkdir meta-test
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>We, then, need to inform bitbake that we have a layer. We will create
+<strong>conf/bblayers.conf</strong> with following content:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>conf/bblayers.conf</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">BBPATH :<span class="o">=</span> <span class="s2">&quot;${TOPDIR}&quot;</span>
+</span><span class="line">BBFILES ?<span class="o">=</span> <span class="s2">&quot;&quot;</span>
+</span><span class="line"><span class="nv">BBLAYERS</span> <span class="o">=</span> <span class="s2">&quot; \</span>
+</span><span class="line"><span class="s2">  ${TOPDIR}/meta-test \</span>
+</span><span class="line"><span class="s2">    &quot;</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>${TOPDIR} is not defined anywhere in our *.conf files. This variable,
+when undefined, will be defined by bitbake itself in
+<em>lib/bb/parse/parse_py/ConfHandler.py:36</em>. </p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>a code portion that sets TOPDIR in ConfHandler.py</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+</pre></td><td class="code"><pre><code class="python"><span class="line"><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+</span><span class="line">
+</span><span class="line"><span class="k">def</span> <span class="nf">init</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+</span><span class="line">    <span class="n">topdir</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">getVar</span><span class="p">(</span><span class="s">&#39;TOPDIR&#39;</span><span class="p">)</span>
+</span><span class="line">    <span class="k">if</span> <span class="ow">not</span> <span class="n">topdir</span><span class="p">:</span>
+</span><span class="line">        <span class="n">data</span><span class="o">.</span><span class="n">setVar</span><span class="p">(</span><span class="s">&#39;TOPDIR&#39;</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">getcwd</span><span class="p">())</span>
+</span><span class="line">
+</span><span class="line"><span class="p">(</span><span class="o">...</span><span class="p">)</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>As you see. TOPDIR is defined to be the directory in which we run
+bitbake. The use of BBPATH and BBLAYERS is explained in <a href="http://docs.openembedded.org/bitbake/html/ch02s03.html">user
+manual</a>:</p>
+
+<pre><code>Bitbake will first search the current working directory for an optional
+"conf/bblayers.conf" configuration file. This file is expected to contain a
+BBLAYERS variable which is a space delimited list of 'layer' directories. For
+each directory in this list a "conf/layer.conf" file will be searched for and
+parsed with the LAYERDIR variable being set to the directory where the layer was
+found. The idea is these files will setup BBPATH and other variables correctly
+for a given build directory automatically for the user.
+
+Bitbake will then expect to find 'conf/bitbake.conf' somewhere in the user
+specified BBPATH. That configuration file generally has include directives
+to pull in any other metadata (generally files specific to architecture,
+machine, local and so on.
+</code></pre>
+
+<p>Additionally, <strong>BBPATH</strong> is analogous to <strong>PATH</strong> variable.
+Configuration files can be included in bitbake.conf or other *.conf
+files. When relative path is given, the file is searched in the
+directories set in BBPATH, and the first hit will be included.</p>
+
+<p>Continuing with our layer, let’s add our layer configuration. Create
+<em>conf/</em> directory first:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">mkdir meta-test/conf
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>And add <strong>conf/layer.conf</strong> with the following contents:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>conf/layer.conf</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">BBPATH .<span class="o">=</span> <span class="s2">&quot;:${LAYERDIR}&quot;</span>
+</span><span class="line">
+</span><span class="line">BBFILES +<span class="o">=</span> <span class="s2">&quot;${LAYERDIR}/recipes-*/*/*.bb \</span>
+</span><span class="line"><span class="s2">            ${LAYERDIR}/recipes-*/*/*.bbappend&quot;</span>
+</span><span class="line">
+</span><span class="line">BBFILE_COLLECTIONS +<span class="o">=</span> <span class="s2">&quot;test&quot;</span>
+</span><span class="line">BBFILE_PATTERN_test :<span class="o">=</span> <span class="s2">&quot;^${LAYERDIR}/&quot;</span>
+</span><span class="line"><span class="nv">BBFILE_PRIORITY_test</span> <span class="o">=</span> <span class="s2">&quot;5&quot;</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>We append our layer directory to <em>BBPATH</em> so that our layer directory is
+also searched when bitbake looks for a configuration file which is
+relatively included.</p>
+
+<p><strong>BBFILES</strong> variable is appended with our recipes. We tell bitbake that
+we have recipes in our layer directory. All the recipes we create in
+recipes-XXX/YYY/ directories within our LAYERDIR will get appended to
+BBFILES.</p>
+
+<p><strong>FIXME:</strong> Add explanations for COLLECTIONS, PATTERNS, and PRIORITY</p>
+
+<p>Lets create our example recipe within the directory structure we have
+just defined above.  This recipe is named <strong>firstrecipe</strong>.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>create our first recipe</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">mkdir -p meta-test/recipes-example/firstrecipe
+</span><span class="line">vim meta-test/recipes-example/firstrecipe/firstrecipe_0.0.bb
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>Using your favorite editor, create <strong>firstrecipe_0.0.bb</strong>. The version
+of a recipe is contained with its filename seperated by _. Since we do
+not have version for our recipe, we make it 0.0. Our recipe will only
+contain a description.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>meta-test/recipes-example/firstrecipe_0.0.bb</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line"><span class="nv">DESCRIPTION</span> <span class="o">=</span> <span class="s2">&quot;Our first recipe for bitbake hello world&quot;</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>Finally, our conf, classes and meta-test directories are organized as
+below:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>meta-test directory structure</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">.
+</span><span class="line">|-- classes
+</span><span class="line">|   |-- base.bbclass
+</span><span class="line">|   <span class="sb">`</span>-- logging.bbclass
+</span><span class="line">|-- conf
+</span><span class="line">|   |-- bblayers.conf
+</span><span class="line">|   <span class="sb">`</span>-- bitbake.conf
+</span><span class="line">|-- meta-test
+</span><span class="line">|   |-- conf
+</span><span class="line">|   |   <span class="sb">`</span>-- layer.conf
+</span><span class="line">|   <span class="sb">`</span>-- recipes-example
+</span><span class="line">|       <span class="sb">`</span>-- firstrecipe
+</span><span class="line">|           <span class="sb">`</span>-- firstrecipe_0.0.bb
+</span><span class="line"><span class="se">\-</span>-
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>We are now ready to test our logic in base. Cd into the bitbake
+directory and run bitbake with debug on.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">./bin/bitbake firstrecipe -vDD
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>Congratulations! Your package building logic is in action! You can check
+the additional log information in <strong>tmp/work/firstrecipe-0.0-r0/temp/</strong>.
+Morover, the code run in each task is written to <em>temp</em> directory with
+name “run_TASK.PID”.  Check these files to see what is run in each task.
+Bitbake includes the logs of all tasks in temp/ directory. Additionally,
+please look at <strong>log.task_order</strong> file, which includes our task order
+defined in base.</p>
+
+<p>It is now up to you to add required code for tasks defined in base to
+get a functional build system (actual fetcher, patcher, extractor code
+etc). Don’t invent the wheel again, OpenEmbedded already built one :)</p>
+
+<h3 id="overriding-tasks">Overriding Tasks</h3>
+<p>Defining the package building logic is not enough to create a useful
+build system. There are different ways of configuration, making, and
+installing provided by such tools as autotools, cmake, scons, etc.
+Although the routines for getting the source, unpacking, and patching it
+can be applied to all recipes, we need to override <strong>do_configure,
+do_make, do_install</strong> tasks for different recipes.</p>
+
+<p>Assume that our firstrecipe uses autotools which means that it has
+<strong>configure script</strong>, we can build it using <strong>make</strong>, and install it
+with <strong>make install</strong>.  Instead of providing an actual code, we will
+again just print a line in autotools package. Now, create
+<strong>autotools.bbclass</strong> in <strong>classes/</strong> directory with the following
+contents:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>classes/autotools.bbclass</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">autotools_do_configure<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bbnote <span class="s2">&quot;AUTOTOOLS_CONFIGURE&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">autotools_do_make<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bbnote <span class="s2">&quot;AUTOTOOLS_MAKE&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">autotools_do_install<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bbnote <span class="s2">&quot;AUTOTOOLS_INSTALL&quot;</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">EXPORT_FUNCTIONS do_configure do_make do_install
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>Inherit the autotools package in our firstrecipe.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line"><span class="nv">DESCRIPTION</span> <span class="o">=</span> <span class="s2">&quot;Our first recipe for bitbake hello world&quot;</span>
+</span><span class="line">
+</span><span class="line">inherit autotools
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>We are now ready to build our firstrecipe using different
+do_{configure,make,install} tasks.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">./bin/bitbake firstrecipe -vDD
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>Now, please go to <em>temp</em> directory and see which code is run in configure, make,
+and install tasks. Without <strong>inherit</strong> keyword in our recipe, bitbake runs the
+following code on do_configure task:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>the code that is run without any inheritence</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+<span class="line-number">15</span>
+<span class="line-number">16</span>
+<span class="line-number">17</span>
+<span class="line-number">18</span>
+<span class="line-number">19</span>
+<span class="line-number">20</span>
+<span class="line-number">21</span>
+<span class="line-number">22</span>
+<span class="line-number">23</span>
+<span class="line-number">24</span>
+<span class="line-number">25</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line"><span class="c">#!/bin/sh -e</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">HOME</span><span class="o">=</span><span class="s2">&quot;/Users/eren&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">SHELL</span><span class="o">=</span><span class="s2">&quot;/bin/zsh&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">LOGNAME</span><span class="o">=</span><span class="s2">&quot;eren&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">USER</span><span class="o">=</span><span class="s2">&quot;eren&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">TERM</span><span class="o">=</span><span class="s2">&quot;screen-256color&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">&quot;/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/X11/bin:/Users/eren/.zsh_scripts:/sbin:/usr/sbin:/Users/eren/.zsh_scripts&quot;</span>
+</span><span class="line">do_configure<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    base_do_configure
+</span><span class="line">
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">base_do_configure<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bbnote <span class="s2">&quot;BASE_DO_CONFIGURE&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">bbnote<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;NOTE: $*&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line"><span class="nb">set</span> -x
+</span><span class="line"><span class="nb">cd</span> /Users/eren/sourcebox/bitbake-doc/tmp/work/firstrecipe-0.0-r0/firstrecipe-0.0
+</span><span class="line">do_configure
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>However, when autotools is inherited, the following code is run:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>the code that is run when autotools.bbclass is inherited</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+<span class="line-number">15</span>
+<span class="line-number">16</span>
+<span class="line-number">17</span>
+<span class="line-number">18</span>
+<span class="line-number">19</span>
+<span class="line-number">20</span>
+<span class="line-number">21</span>
+<span class="line-number">22</span>
+<span class="line-number">23</span>
+<span class="line-number">24</span>
+<span class="line-number">25</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line"><span class="c">#!/bin/sh -e</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">HOME</span><span class="o">=</span><span class="s2">&quot;/Users/eren&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">SHELL</span><span class="o">=</span><span class="s2">&quot;/bin/zsh&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">LOGNAME</span><span class="o">=</span><span class="s2">&quot;eren&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">USER</span><span class="o">=</span><span class="s2">&quot;eren&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">TERM</span><span class="o">=</span><span class="s2">&quot;screen-256color&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">&quot;/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/X11/bin:/Users/eren/.zsh_scripts:/sbin:/usr/sbin:/Users/eren/.zsh_scripts&quot;</span>
+</span><span class="line">do_configure<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    autotools_do_configure
+</span><span class="line">
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">autotools_do_configure<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bbnote <span class="s2">&quot;AUTOTOOLS_CONFIGURE&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">bbnote<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">	<span class="nb">echo</span> <span class="s2">&quot;NOTE: $*&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line"><span class="nb">set</span> -x
+</span><span class="line"><span class="nb">cd</span> /Users/eren/sourcebox/bitbake-doc/tmp/work/firstrecipe-0.0-r0/firstrecipe-0.0
+</span><span class="line">do_configure
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>Can you spot the difference? When autotools is inherited, do_configure()
+calls autotools_do_configure(). This is achieved by EXPORT_FUNCTIONS
+keyword.  EXPORT_FUNCTIONS maps each task in its argument to the
+functions in the bbclass prefixed with the name of that bbclass.  So,
+when EXPORT_FUNCTIONS is used in <strong>autotools.bbclass</strong>, <strong>do_configure</strong>
+is mapped to <strong>autotools_do_configure</strong>. We did the same in
+<strong>base.bbclass</strong> file. We used EXPORT_FUNCTIONS, it mapped each task to
+base_do_<strong>TASKNAME</strong>. This type of abstraction has an advantage that
+when we override a task, we do not lose the original task. For example,
+in <strong>autotools_do_configure</strong>, we can still call <strong>base_do_configure</strong>.</p>
+
+<p><strong>FIXME:</strong> I need clarification on how export_functions works and how
+these tasks gets mapped.</p>
+
+<p><strong>FIXME:</strong> task flags have not been mentioned, dirs, cleandirs etc.
+Mention how bitbake interprets it, what’s the need, etc</p>
+
+<h2 id="summary">Summary</h2>
+<p>We have covered all the necessary information about bitbake. We know how
+tasks are defined, how layers can be added, how bitbake parses
+configuration and metadata files, how tasks can be overwritten. With
+these information, we are now ready to delve into openembedded code.</p>
+
+<h1 id="understanding-openembedded">Understanding OpenEmbedded</h1>
+<p>OpenEmbedded provides a complete build system and a number of recipes.
+It has a lot of code for fetching the source, patching, building,
+installing, producing ipk, deb, rpm packages, and making an image etc.
+OpenEmbedded also provides other features such as caching but it’s out
+of the scope of this document.</p>
+
+<p><img src="https://www.yoctoproject.org/docs/current/yocto-project-qs/figures/yocto-environment.png" /></p>
+
+<p>Although this chart explains the general workflow of openembedded, it
+does not give an insight under the hood. How is source fetched, patched,
+configured, and installed? How is ipk, rpm, and deb created? How is
+image produced?</p>
+
+<p>Having an experience from bitbake hello world, in this section we will
+try to give an insight on how openembedded is structured, how packages
+are fetched, configured, installed, and how package creation is done. We
+will aim for a big picture in detail.</p>
+
+<p><strong>FIXME</strong>: Mention the distinction/common things with yocto and
+openembedded</p>
+
+<h2 id="getting-the-source">Getting The Source</h2>
+<p>As of this date, the latest stable version of Yocto is <em>danny</em>. Cd into
+your working directory and get the source.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>get version danny and extract it</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">wget http://downloads.yoctoproject.org/releases/yocto/yocto-1.3/poky-danny-8.0.tar.bz2
+</span><span class="line">tar xvf poky-danny-8.0.tar.bz2
+</span><span class="line"><span class="nb">cd </span>poky-danny-8.0
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>Let’s move on to explaining the configuration files.</p>
+
+<h2 id="an-overview-of-bitbakeconf">An Overview of Bitbake.conf</h2>
+<p>As we have seen, bitbake.conf is parsed when bitbake is run. This file
+is among the important files in OE. The file is in <em>meta/conf/</em>
+directory and it includes a number of configuration variables that are
+used in metadatas and bb recipes.  Bitbake.conf is not standalone and it
+includes other configuration files within <em>conf</em> directory. Please
+navigate to the line no 677 in bitbake.conf and see that there are other
+configuration files appended into bitbake.conf for modularity.</p>
+
+<p>Please do not miss the lines that make use of variables. This is what
+allows you to build an image for different architectures by only
+changing a few variables.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>relatively included configuration files in bitbake.conf</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">include conf/build/<span class="k">${</span><span class="nv">BUILD_SYS</span><span class="k">}</span>.conf
+</span><span class="line">include conf/target/<span class="k">${</span><span class="nv">TARGET_SYS</span><span class="k">}</span>.conf
+</span><span class="line">include conf/machine/<span class="k">${</span><span class="nv">MACHINE</span><span class="k">}</span>.conf
+</span><span class="line">include conf/machine-sdk/<span class="k">${</span><span class="nv">SDKMACHINE</span><span class="k">}</span>.conf
+</span><span class="line">include conf/distro/<span class="k">${</span><span class="nv">DISTRO</span><span class="k">}</span>.conf
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>Note that these inclusions are done with relative path to the
+configuration files.  These configuration files will be searched in the
+directories defined in BBPATH variable. It means that when bitbake is
+run, these configuration files will be searched in all layers you
+defined, and the first hit will be used. Remember that the path of all
+the layers are appended to BBBPATH variable.</p>
+
+<p>You can look at the other configuration files in depth. 99% of the
+variables used in bitbake recipes are defined in bitbake.conf and other
+files that are included. </p>
+
+<h2 id="tasks">Tasks</h2>
+<p>In order to understand OE architecture, it’s important to know which
+tasks are defined where. We have seen that base.bbclass is an ideal
+place to define our logic and put common code. All bbclass files are in
+<em>meta/classes/</em> directory.  Open base.bbclass file and search for
+“addtask” keyword. In base.bbclass, the following tasks are defined:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>tasks defined in base.bbclass</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+<span class="line-number">15</span>
+<span class="line-number">16</span>
+<span class="line-number">17</span>
+<span class="line-number">18</span>
+<span class="line-number">19</span>
+<span class="line-number">20</span>
+<span class="line-number">21</span>
+<span class="line-number">22</span>
+<span class="line-number">23</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">...
+</span><span class="line">addtask fetch
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">addtask unpack after do_fetch
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">addtask configure after do_patch
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">addtask compile after do_configure
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">addtask install after do_compile
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">addtask build after do_populate_sysroot
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">addtask cleansstate after do_clean
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">addtask cleanall after do_cleansstate
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>However, these are not the only tasks defined. Take attention to the
+“inherit” keywords on the top. There are tasks defined in
+<strong>{patch,staging}.bbclass</strong> files.  Let’s see which tasks are defined.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>tasks defined in {patch,staging}.bbclass</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">// patch.bbclass
+</span><span class="line">addtask patch after do_unpack
+</span><span class="line">
+</span><span class="line">// staging.bbclass
+</span><span class="line">addtask populate_sysroot after do_install
+</span><span class="line">addtask do_populate_sysroot_setscene
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>These tasks are also not enough. In bitbake.conf,
+<strong>conf/distro/defaultsetup.conf</strong> is included. It defines the following
+packages that should be inherited automatically: <em>package_ipk</em>,
+<em>insane</em>, <em>debian devshell sstate license</em>, among which some of them
+define tasks. Here is a code portion that defines inheritence:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>inherited package definiton in defaultsetup.conf</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">USER_CLASSES ?<span class="o">=</span> <span class="s2">&quot;&quot;</span>
+</span><span class="line">PACKAGE_CLASSES ?<span class="o">=</span> <span class="s2">&quot;package_ipk&quot;</span>
+</span><span class="line">INHERIT_INSANE ?<span class="o">=</span> <span class="s2">&quot;insane&quot;</span>
+</span><span class="line">INHERIT_DISTRO ?<span class="o">=</span> <span class="s2">&quot;debian devshell sstate license&quot;</span>
+</span><span class="line">INHERIT +<span class="o">=</span> <span class="s2">&quot;${PACKAGE_CLASSES} ${USER_CLASSES} ${INHERIT_INSANE} ${INHERIT_DISTRO}&quot;</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>Among these bbclass files, the one that is related with package
+management and that defines packaging tasks is <strong>package_ipk.bbclass</strong>.
+This bbclass inherits <strong>package.bbclass</strong>, which defines packaging logic
+just like we defined the build logic in bitbake hello world. Let’s
+investigate package.bbclass and package_ipk.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>meta/classes/package.bbclass</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">...
+</span><span class="line">addtask package before do_build after do_install
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">addtask do_package_setscene
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">addtask package_write before do_build after do_package
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>It should be noted that packaging starts after <strong>do_install</strong> is
+finished. Later, package writing logic is defined after packaging is
+started (do_package). With this packaging logic, any of the packaging
+type (ipk, deb, rpm) can be implemented. Since ipk is default and easier
+one, we will look into package_ipk.bbclass. It defines the following
+tasks:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>meta/classes/package_ipk.bbclass</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">...
+</span><span class="line">addtask do_package_write_ipk_setscene
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">python do_package_write_ipk <span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    bb.build.exec_func<span class="o">(</span><span class="s2">&quot;read_subpackage_metadata&quot;</span>, d<span class="o">)</span>
+</span><span class="line">    bb.build.exec_func<span class="o">(</span><span class="s2">&quot;do_package_ipk&quot;</span>, d<span class="o">)</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">addtask package_write_ipk before do_package_write after do_package
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>As you see, when package_write_ipk is run, it calls
+<strong>read_subpackage_metadata</strong>, and <strong>do_package_ipk</strong> to create ipk
+package. Other packaging classes do the similar. Debian defines
+package_write_deb, and do_package_deb is called; same for RPM.</p>
+
+<p>The functions called are outside the scope of this document. If you want
+to dig how package creating is done in detail, you can investigate it.</p>
+
+<p>Towards Creating an Image
+————————- We covered the essentials of understanding OE.
+It does all the required work for building different types of packages
+(fetching, configuring, installing {cmake, autotools, etc}, making rpm,
+deb, ipk packages). We saw how package building logic is implemented.
+Since bitbake can handle recipe/task dependencies, and we have all the
+logic for building packages, image creation is done just like any other
+recipe processing. We will see how an image is created.</p>
+
+<h3 id="package-groups">Package Groups</h3>
+<p>You may be familiar with how package dependency relation can be used to
+provide virtual packages that have some functionality. This is achieved
+through the use of <strong>package groups</strong> in OE. Package group can be seen
+as a virtual package that have dependencies on packages that are
+related.</p>
+
+<p>Package groups reside in <em>recipes-*/packagegroups</em> directory. They
+are bitbake recipes just as “busybox” or “tinylogin” is. However, they
+do not have source to build, they only depend on other packages to
+provide functionality. Below is the list of available packagegroups in
+openembedded-core. Do not be confused with a lot of package groups. We
+will only investigate only one of them.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>available package groups in openembedded-core</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+<span class="line-number">15</span>
+<span class="line-number">16</span>
+<span class="line-number">17</span>
+<span class="line-number">18</span>
+<span class="line-number">19</span>
+<span class="line-number">20</span>
+<span class="line-number">21</span>
+<span class="line-number">22</span>
+<span class="line-number">23</span>
+<span class="line-number">24</span>
+<span class="line-number">25</span>
+<span class="line-number">26</span>
+<span class="line-number">27</span>
+<span class="line-number">28</span>
+<span class="line-number">29</span>
+<span class="line-number">30</span>
+<span class="line-number">31</span>
+<span class="line-number">32</span>
+<span class="line-number">33</span>
+<span class="line-number">34</span>
+<span class="line-number">35</span>
+<span class="line-number">36</span>
+<span class="line-number">37</span>
+<span class="line-number">38</span>
+<span class="line-number">39</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">% find meta/recipes-*/packagegroups -type d | xargs tree --charset<span class="o">=</span>utf
+</span><span class="line">
+</span><span class="line">meta/recipes-core/packagegroups
+</span><span class="line">|-- nativesdk-packagegroup-sdk-host.bb
+</span><span class="line">|-- packagegroup-base.bb
+</span><span class="line">|-- packagegroup-core-boot.bb
+</span><span class="line">|-- packagegroup-core-buildessential.bb
+</span><span class="line">|-- packagegroup-core-nfs.bb
+</span><span class="line">|-- packagegroup-core-sdk.bb
+</span><span class="line">|-- packagegroup-core-ssh-dropbear.bb
+</span><span class="line">|-- packagegroup-core-ssh-openssh.bb
+</span><span class="line">|-- packagegroup-core-standalone-sdk-target.bb
+</span><span class="line">|-- packagegroup-core-tools-debug.bb
+</span><span class="line">|-- packagegroup-core-tools-profile.bb
+</span><span class="line">|-- packagegroup-core-tools-testapps.bb
+</span><span class="line">|-- packagegroup-cross-canadian.bb
+</span><span class="line"><span class="sb">`</span>-- packagegroup-self-hosted.bb
+</span><span class="line">meta/recipes-devtools/packagegroups
+</span><span class="line"><span class="sb">`</span>-- packagegroup-core-device-devel.bb
+</span><span class="line">meta/recipes-extended/packagegroups
+</span><span class="line">|-- packagegroup-core-basic.bb
+</span><span class="line"><span class="sb">`</span>-- packagegroup-core-lsb.bb
+</span><span class="line">meta/recipes-gnome/packagegroups
+</span><span class="line">|-- packagegroup-core-sdk-gmae.bb
+</span><span class="line">|-- packagegroup-core-standalone-gmae-sdk-target.bb
+</span><span class="line"><span class="sb">`</span>-- packagegroup-sdk-gmae.inc
+</span><span class="line">meta/recipes-graphics/packagegroups
+</span><span class="line">|-- packagegroup-core-clutter.bb
+</span><span class="line">|-- packagegroup-core-gtk-directfb.bb
+</span><span class="line">|-- packagegroup-core-x11-base.bb
+</span><span class="line">|-- packagegroup-core-x11-xserver.bb
+</span><span class="line"><span class="sb">`</span>-- packagegroup-core-x11.bb
+</span><span class="line">meta/recipes-qt/packagegroups
+</span><span class="line">|-- nativesdk-packagegroup-qte-toolchain-host.bb
+</span><span class="line">|-- packagegroup-core-qt.bb
+</span><span class="line">|-- packagegroup-core-qt4e.bb
+</span><span class="line"><span class="sb">`</span>-- packagegroup-qte-toolchain-target.bb
+</span><span class="line">meta/recipes-sato/packagegroups
+</span><span class="line"><span class="sb">`</span>-- packagegroup-core-x11-sato.bb
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>The important one is packagegroup-core-boot, which groups required
+packages to be able to boot a system. Let’s investigate it.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>meta/recipes-core/packagegroups/packagegroup-core-boot.bb</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+<span class="line-number">15</span>
+<span class="line-number">16</span>
+<span class="line-number">17</span>
+<span class="line-number">18</span>
+<span class="line-number">19</span>
+<span class="line-number">20</span>
+<span class="line-number">21</span>
+<span class="line-number">22</span>
+<span class="line-number">23</span>
+<span class="line-number">24</span>
+<span class="line-number">25</span>
+<span class="line-number">26</span>
+<span class="line-number">27</span>
+<span class="line-number">28</span>
+<span class="line-number">29</span>
+<span class="line-number">30</span>
+<span class="line-number">31</span>
+<span class="line-number">32</span>
+<span class="line-number">33</span>
+<span class="line-number">34</span>
+<span class="line-number">35</span>
+<span class="line-number">36</span>
+<span class="line-number">37</span>
+<span class="line-number">38</span>
+<span class="line-number">39</span>
+<span class="line-number">40</span>
+<span class="line-number">41</span>
+<span class="line-number">42</span>
+<span class="line-number">43</span>
+<span class="line-number">44</span>
+<span class="line-number">45</span>
+<span class="line-number">46</span>
+<span class="line-number">47</span>
+<span class="line-number">48</span>
+<span class="line-number">49</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line"><span class="c">#</span>
+</span><span class="line"><span class="c"># Copyright (C) 2007 OpenedHand Ltd.</span>
+</span><span class="line"><span class="c">#</span>
+</span><span class="line">
+</span><span class="line"><span class="nv">SUMMARY</span> <span class="o">=</span> <span class="s2">&quot;Minimal boot requirements&quot;</span>
+</span><span class="line"><span class="nv">DESCRIPTION</span> <span class="o">=</span> <span class="s2">&quot;The minimal set of packages required to boot the system&quot;</span>
+</span><span class="line"><span class="nv">LICENSE</span> <span class="o">=</span> <span class="s2">&quot;MIT&quot;</span>
+</span><span class="line"><span class="nv">DEPENDS</span> <span class="o">=</span> <span class="s2">&quot;virtual/kernel&quot;</span>
+</span><span class="line"><span class="nv">PR</span> <span class="o">=</span> <span class="s2">&quot;r10&quot;</span>
+</span><span class="line">
+</span><span class="line">inherit packagegroup
+</span><span class="line">
+</span><span class="line"><span class="nv">PACKAGE_ARCH</span> <span class="o">=</span> <span class="s2">&quot;${MACHINE_ARCH}&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="c">#</span>
+</span><span class="line"><span class="c"># Set by the machine configuration with packages essential for device bootup</span>
+</span><span class="line"><span class="c">#</span>
+</span><span class="line">MACHINE_ESSENTIAL_EXTRA_RDEPENDS ?<span class="o">=</span> <span class="s2">&quot;&quot;</span>
+</span><span class="line">MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS ?<span class="o">=</span> <span class="s2">&quot;&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="c"># For backwards compatibility after rename</span>
+</span><span class="line">RPROVIDES_<span class="k">${</span><span class="nv">PN</span><span class="k">}</span> <span class="o">=</span> <span class="s2">&quot;task-core-boot&quot;</span>
+</span><span class="line">RREPLACES_<span class="k">${</span><span class="nv">PN</span><span class="k">}</span> <span class="o">=</span> <span class="s2">&quot;task-core-boot&quot;</span>
+</span><span class="line">RCONFLICTS_<span class="k">${</span><span class="nv">PN</span><span class="k">}</span> <span class="o">=</span> <span class="s2">&quot;task-core-boot&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="c"># Distro can override the following VIRTUAL-RUNTIME providers:</span>
+</span><span class="line">VIRTUAL-RUNTIME_dev_manager ?<span class="o">=</span> <span class="s2">&quot;udev&quot;</span>
+</span><span class="line">VIRTUAL-RUNTIME_login_manager ?<span class="o">=</span> <span class="s2">&quot;tinylogin&quot;</span>
+</span><span class="line">VIRTUAL-RUNTIME_init_manager ?<span class="o">=</span> <span class="s2">&quot;sysvinit&quot;</span>
+</span><span class="line">VIRTUAL-RUNTIME_initscripts ?<span class="o">=</span> <span class="s2">&quot;initscripts&quot;</span>
+</span><span class="line">VIRTUAL-RUNTIME_keymaps ?<span class="o">=</span> <span class="s2">&quot;keymaps&quot;</span>
+</span><span class="line">
+</span><span class="line">RDEPENDS_<span class="k">${</span><span class="nv">PN</span><span class="k">}</span> <span class="o">=</span> <span class="s2">&quot;\</span>
+</span><span class="line"><span class="s2">    base-files \</span>
+</span><span class="line"><span class="s2">    base-passwd \</span>
+</span><span class="line"><span class="s2">    busybox \</span>
+</span><span class="line"><span class="s2">    ${@base_contains(&quot;</span>MACHINE_FEATURES<span class="s2">&quot;, &quot;</span>rtc<span class="s2">&quot;, &quot;</span>busybox-hwclock<span class="s2">&quot;, &quot;&quot;, d)} \</span>
+</span><span class="line"><span class="s2">    ${VIRTUAL-RUNTIME_initscripts} \</span>
+</span><span class="line"><span class="s2">    ${@base_contains(&quot;</span>MACHINE_FEATURES<span class="s2">&quot;, &quot;</span>keyboard<span class="s2">&quot;, &quot;</span><span class="k">${</span><span class="nv">VIRTUAL</span><span class="p">-RUNTIME_keymaps</span><span class="k">}</span><span class="s2">&quot;, &quot;&quot;, d)} \</span>
+</span><span class="line"><span class="s2">    modutils-initscripts \</span>
+</span><span class="line"><span class="s2">    netbase \</span>
+</span><span class="line"><span class="s2">    ${VIRTUAL-RUNTIME_login_manager} \</span>
+</span><span class="line"><span class="s2">    ${VIRTUAL-RUNTIME_init_manager} \</span>
+</span><span class="line"><span class="s2">    ${VIRTUAL-RUNTIME_dev_manager} \</span>
+</span><span class="line"><span class="s2">    ${VIRTUAL-RUNTIME_update-alternatives} \</span>
+</span><span class="line"><span class="s2">    ${MACHINE_ESSENTIAL_EXTRA_RDEPENDS}&quot;</span>
+</span><span class="line">
+</span><span class="line">RRECOMMENDS_<span class="k">${</span><span class="nv">PN</span><span class="k">}</span> <span class="o">=</span> <span class="s2">&quot;\</span>
+</span><span class="line"><span class="s2">    ${MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS}&quot;</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>See RDEPENDS_${PN} variable. This recipe makes bitbake build the packages
+in RDEPENDS. The packages are also controlled by other variables such as
+MACHINE_FEATURES. If this variable contains rtc, or keyboard, a package is
+appended to RDEPENDS accordingly.</p>
+
+<h3 id="core-image-minimal">Core Image Minimal</h3>
+<p>Image recipes reside in <em>recipes-*/images/</em> directory. There are
+different image recipes for different purposes. Image recipes in
+openembedded core are listed below:</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+<span class="line-number">15</span>
+<span class="line-number">16</span>
+<span class="line-number">17</span>
+<span class="line-number">18</span>
+<span class="line-number">19</span>
+<span class="line-number">20</span>
+<span class="line-number">21</span>
+<span class="line-number">22</span>
+<span class="line-number">23</span>
+<span class="line-number">24</span>
+<span class="line-number">25</span>
+<span class="line-number">26</span>
+<span class="line-number">27</span>
+<span class="line-number">28</span>
+<span class="line-number">29</span>
+<span class="line-number">30</span>
+<span class="line-number">31</span>
+<span class="line-number">32</span>
+<span class="line-number">33</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">% find meta/recipes-*/images -type d | xargs tree --charset<span class="o">=</span>utf
+</span><span class="line">
+</span><span class="line">meta/recipes-core/images
+</span><span class="line">|-- build-appliance-image
+</span><span class="line">|   |-- Yocto_Build_Appliance.vmx
+</span><span class="line">|   <span class="sb">`</span>-- Yocto_Build_Appliance.vmxf
+</span><span class="line">|-- build-appliance-image.bb
+</span><span class="line">|-- core-image-base.bb
+</span><span class="line">|-- core-image-minimal-dev.bb
+</span><span class="line">|-- core-image-minimal-initramfs.bb
+</span><span class="line">|-- core-image-minimal-mtdutils.bb
+</span><span class="line"><span class="sb">`</span>-- core-image-minimal.bb
+</span><span class="line">meta/recipes-core/images/build-appliance-image
+</span><span class="line">|-- Yocto_Build_Appliance.vmx
+</span><span class="line"><span class="sb">`</span>-- Yocto_Build_Appliance.vmxf
+</span><span class="line">meta/recipes-extended/images
+</span><span class="line">|-- core-image-basic.bb
+</span><span class="line">|-- core-image-lsb-dev.bb
+</span><span class="line">|-- core-image-lsb-sdk.bb
+</span><span class="line"><span class="sb">`</span>-- core-image-lsb.bb
+</span><span class="line">meta/recipes-graphics/images
+</span><span class="line">|-- core-image-clutter.bb
+</span><span class="line">|-- core-image-gtk-directfb.bb
+</span><span class="line"><span class="sb">`</span>-- core-image-x11.bb
+</span><span class="line">meta/recipes-qt/images
+</span><span class="line"><span class="sb">`</span>-- qt4e-demo-image.bb
+</span><span class="line">meta/recipes-rt/images
+</span><span class="line">|-- core-image-rt-sdk.bb
+</span><span class="line"><span class="sb">`</span>-- core-image-rt.bb
+</span><span class="line">meta/recipes-sato/images
+</span><span class="line">|-- core-image-sato-dev.bb
+</span><span class="line">|-- core-image-sato-sdk.bb
+</span><span class="line"><span class="sb">`</span>-- core-image-sato.bb
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p><strong>FIXME:</strong> What are build appliance images for?</p>
+
+<p>Any one of the image recipes can be used by bitbake by *bitbake
+<image name="">*. Since the minimal image is simple to understand, we will
+investigate core-image-minimal. Let&#8217;s move on to how core-image-minimal
+is built.</image></p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>meta/recipes-core/images/core-image-minimal.bb</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line"><span class="nv">DESCRIPTION</span> <span class="o">=</span> <span class="s2">&quot;A small image just capable of allowing a device to boot.&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="nv">IMAGE_INSTALL</span> <span class="o">=</span> <span class="s2">&quot;packagegroup-core-boot ${ROOTFS_PKGMANAGE_BOOTSTRAP} ${CORE_IMAGE_EXTRA_INSTALL}&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="nv">IMAGE_LINGUAS</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="nv">LICENSE</span> <span class="o">=</span> <span class="s2">&quot;MIT&quot;</span>
+</span><span class="line">
+</span><span class="line">inherit core-image
+</span><span class="line">
+</span><span class="line"><span class="nv">IMAGE_ROOTFS_SIZE</span> <span class="o">=</span> <span class="s2">&quot;8192&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="c"># remove not needed ipkg informations</span>
+</span><span class="line">ROOTFS_POSTPROCESS_COMMAND +<span class="o">=</span> <span class="s2">&quot;remove_packaging_data_files ; &quot;</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>As you see, this recipe sets IMAGE_INSTALL (<strong>does not depend on!</strong>) to
+packagegroup-core-boot that we just saw and it inherits <em>core-image</em> bbclass. It
+also sets other variables that have an effect on image creation process (rootfs
+size, and postprocess command) Let’s see what core-image does.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>meta/classes/core-image.bbclass</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+<span class="line-number">15</span>
+<span class="line-number">16</span>
+<span class="line-number">17</span>
+<span class="line-number">18</span>
+<span class="line-number">19</span>
+<span class="line-number">20</span>
+<span class="line-number">21</span>
+<span class="line-number">22</span>
+<span class="line-number">23</span>
+<span class="line-number">24</span>
+<span class="line-number">25</span>
+<span class="line-number">26</span>
+<span class="line-number">27</span>
+<span class="line-number">28</span>
+<span class="line-number">29</span>
+<span class="line-number">30</span>
+<span class="line-number">31</span>
+<span class="line-number">32</span>
+<span class="line-number">33</span>
+<span class="line-number">34</span>
+<span class="line-number">35</span>
+<span class="line-number">36</span>
+<span class="line-number">37</span>
+<span class="line-number">38</span>
+<span class="line-number">39</span>
+<span class="line-number">40</span>
+<span class="line-number">41</span>
+<span class="line-number">42</span>
+<span class="line-number">43</span>
+<span class="line-number">44</span>
+<span class="line-number">45</span>
+<span class="line-number">46</span>
+<span class="line-number">47</span>
+<span class="line-number">48</span>
+<span class="line-number">49</span>
+<span class="line-number">50</span>
+<span class="line-number">51</span>
+<span class="line-number">52</span>
+<span class="line-number">53</span>
+<span class="line-number">54</span>
+<span class="line-number">55</span>
+<span class="line-number">56</span>
+<span class="line-number">57</span>
+<span class="line-number">58</span>
+<span class="line-number">59</span>
+<span class="line-number">60</span>
+<span class="line-number">61</span>
+<span class="line-number">62</span>
+<span class="line-number">63</span>
+<span class="line-number">64</span>
+<span class="line-number">65</span>
+<span class="line-number">66</span>
+<span class="line-number">67</span>
+<span class="line-number">68</span>
+<span class="line-number">69</span>
+<span class="line-number">70</span>
+<span class="line-number">71</span>
+<span class="line-number">72</span>
+<span class="line-number">73</span>
+<span class="line-number">74</span>
+<span class="line-number">75</span>
+<span class="line-number">76</span>
+<span class="line-number">77</span>
+<span class="line-number">78</span>
+<span class="line-number">79</span>
+<span class="line-number">80</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line"><span class="c"># Common code for generating core reference images</span>
+</span><span class="line"><span class="c">#</span>
+</span><span class="line"><span class="c"># Copyright (C) 2007-2011 Linux Foundation</span>
+</span><span class="line">
+</span><span class="line"><span class="nv">LIC_FILES_CHKSUM</span> <span class="o">=</span> <span class="s2">&quot;file://${COREBASE}/LICENSE;md5=3f40d7994397109285ec7b81fdeb3b58 \</span>
+</span><span class="line"><span class="s2">                    file://${COREBASE}/meta/COPYING.MIT;md5=3da9cfbcb788c80a0384361b4de20420&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="c"># IMAGE_FEATURES control content of the core reference images</span>
+</span><span class="line"><span class="c"># </span>
+</span><span class="line"><span class="c"># By default we install packagegroup-core-boot and packagegroup-base packages - this gives us</span>
+</span><span class="line"><span class="c"># working (console only) rootfs.</span>
+</span><span class="line"><span class="c">#</span>
+</span><span class="line"><span class="c"># Available IMAGE_FEATURES:</span>
+</span><span class="line"><span class="c">#</span>
+</span><span class="line"><span class="c"># - x11                 - X server</span>
+</span><span class="line"><span class="c"># - x11-base            - X server with minimal environment</span>
+</span><span class="line"><span class="c"># - x11-sato            - OpenedHand Sato environment</span>
+</span><span class="line"><span class="c"># - tools-debug         - debugging tools</span>
+</span><span class="line"><span class="c"># - tools-profile       - profiling tools</span>
+</span><span class="line"><span class="c"># - tools-testapps      - tools usable to make some device tests</span>
+</span><span class="line"><span class="c"># - tools-sdk           - SDK (C/C++ compiler, autotools, etc.)</span>
+</span><span class="line"><span class="c"># - nfs-server          - NFS server</span>
+</span><span class="line"><span class="c"># - ssh-server-dropbear - SSH server (dropbear)</span>
+</span><span class="line"><span class="c"># - ssh-server-openssh  - SSH server (openssh)</span>
+</span><span class="line"><span class="c"># - qt4-pkgs            - Qt4/X11 and demo applications</span>
+</span><span class="line"><span class="c"># - package-management  - installs package management tools and preserves the package manager database</span>
+</span><span class="line"><span class="c"># - debug-tweaks        - makes an image suitable for development, e.g. allowing passwordless root logins</span>
+</span><span class="line"><span class="c"># - dev-pkgs            - development packages (headers, etc.) for all installed packages in the rootfs</span>
+</span><span class="line"><span class="c"># - dbg-pkgs            - debug symbol packages for all installed packages in the rootfs</span>
+</span><span class="line"><span class="c"># - doc-pkgs            - documentation packages for all installed packages in the rootfs</span>
+</span><span class="line"><span class="c">#</span>
+</span><span class="line"><span class="nv">PACKAGE_GROUP_x11</span> <span class="o">=</span> <span class="s2">&quot;packagegroup-core-x11&quot;</span>
+</span><span class="line">PACKAGE_GROUP_x11-base <span class="o">=</span> <span class="s2">&quot;packagegroup-core-x11-base&quot;</span>
+</span><span class="line">PACKAGE_GROUP_x11-sato <span class="o">=</span> <span class="s2">&quot;packagegroup-core-x11-sato&quot;</span>
+</span><span class="line">PACKAGE_GROUP_tools-debug <span class="o">=</span> <span class="s2">&quot;packagegroup-core-tools-debug&quot;</span>
+</span><span class="line">PACKAGE_GROUP_tools-profile <span class="o">=</span> <span class="s2">&quot;packagegroup-core-tools-profile&quot;</span>
+</span><span class="line">PACKAGE_GROUP_tools-testapps <span class="o">=</span> <span class="s2">&quot;packagegroup-core-tools-testapps&quot;</span>
+</span><span class="line">PACKAGE_GROUP_tools-sdk <span class="o">=</span> <span class="s2">&quot;packagegroup-core-sdk packagegroup-core-standalone-sdk-target&quot;</span>
+</span><span class="line">PACKAGE_GROUP_nfs-server <span class="o">=</span> <span class="s2">&quot;packagegroup-core-nfs-server&quot;</span>
+</span><span class="line">PACKAGE_GROUP_ssh-server-dropbear <span class="o">=</span> <span class="s2">&quot;packagegroup-core-ssh-dropbear&quot;</span>
+</span><span class="line">PACKAGE_GROUP_ssh-server-openssh <span class="o">=</span> <span class="s2">&quot;packagegroup-core-ssh-openssh&quot;</span>
+</span><span class="line">PACKAGE_GROUP_package-management <span class="o">=</span> <span class="s2">&quot;${ROOTFS_PKGMANAGE}&quot;</span>
+</span><span class="line">PACKAGE_GROUP_qt4-pkgs <span class="o">=</span> <span class="s2">&quot;packagegroup-core-qt-demoapps&quot;</span>
+</span><span class="line">
+</span><span class="line">
+</span><span class="line"><span class="c"># IMAGE_FEATURES_REPLACES_foo = &#39;bar1 bar2&#39;</span>
+</span><span class="line"><span class="c"># Including image feature foo would replace the image features bar1 and bar2</span>
+</span><span class="line">IMAGE_FEATURES_REPLACES_ssh-server-openssh <span class="o">=</span> <span class="s2">&quot;ssh-server-dropbear&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="c"># IMAGE_FEATURES_CONFLICTS_foo = &#39;bar1 bar2&#39;</span>
+</span><span class="line"><span class="c"># An error exception would be raised if both image features foo and bar1(or bar2) are included</span>
+</span><span class="line">
+</span><span class="line">python __anonymous<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">    <span class="c"># Ensure we still have a splash screen for existing images</span>
+</span><span class="line">    <span class="k">if </span>base_contains<span class="o">(</span><span class="s2">&quot;IMAGE_FEATURES&quot;</span>, <span class="s2">&quot;apps-console-core&quot;</span>, <span class="s2">&quot;1&quot;</span>, <span class="s2">&quot;&quot;</span>, d<span class="o">)</span> <span class="o">==</span> <span class="s2">&quot;1&quot;</span>:
+</span><span class="line">        bb.warn<span class="o">(</span><span class="s2">&quot;%s: apps-console-core in IMAGE_FEATURES is no longer supported; adding \&quot;splash\&quot; to enable splash screen&quot;</span> % d.getVar<span class="o">(</span><span class="s2">&quot;PN&quot;</span>, True<span class="o">))</span>
+</span><span class="line">        d.appendVar<span class="o">(</span><span class="s2">&quot;IMAGE_FEATURES&quot;</span>, <span class="s2">&quot; splash&quot;</span><span class="o">)</span>
+</span><span class="line"><span class="o">}</span>
+</span><span class="line">
+</span><span class="line">
+</span><span class="line"><span class="nv">CORE_IMAGE_BASE_INSTALL</span> <span class="o">=</span> <span class="s1">&#39;\</span>
+</span><span class="line"><span class="s1">    packagegroup-core-boot \</span>
+</span><span class="line"><span class="s1">    packagegroup-base-extended \</span>
+</span><span class="line"><span class="s1">    \</span>
+</span><span class="line"><span class="s1">    ${CORE_IMAGE_EXTRA_INSTALL} \</span>
+</span><span class="line"><span class="s1">    &#39;</span>
+</span><span class="line">
+</span><span class="line">CORE_IMAGE_EXTRA_INSTALL ?<span class="o">=</span> <span class="s2">&quot;&quot;</span>
+</span><span class="line">
+</span><span class="line">IMAGE_INSTALL ?<span class="o">=</span> <span class="s2">&quot;${CORE_IMAGE_BASE_INSTALL}&quot;</span>
+</span><span class="line">
+</span><span class="line">inherit image
+</span><span class="line">
+</span><span class="line"><span class="c"># Create /etc/timestamp during image construction to give a reasonably sane default time setting</span>
+</span><span class="line">ROOTFS_POSTPROCESS_COMMAND +<span class="o">=</span> <span class="s2">&quot;rootfs_update_timestamp ; &quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="c"># Zap the root password if debug-tweaks feature is not enabled</span>
+</span><span class="line">ROOTFS_POSTPROCESS_COMMAND +<span class="o">=</span> <span class="s1">&#39;${@base_contains(&quot;IMAGE_FEATURES&quot;, &quot;debug-tweaks&quot;, &quot;&quot;, &quot;zap_root_password ; &quot;,d)}&#39;</span>
+</span><span class="line"><span class="c"># Allow openssh accept empty password login if both debug-tweaks and ssh-server-openssh are enabled</span>
+</span><span class="line">ROOTFS_POSTPROCESS_COMMAND +<span class="o">=</span> <span class="s1">&#39;${@base_contains(&quot;IMAGE_FEATURES&quot;, &quot;debug-tweaks ssh-server-openssh&quot;, &quot;openssh_allow_empty_password; &quot;, &quot;&quot;,d)}&#39;</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+<p><strong>FIXME:</strong> What is the use of PACKAGE_GROUP_foobar in image creation process?
+Explain it.</p>
+
+<p>This bbclass does not have any affect on IMAGE_INSTALL because <strong>?=</strong> is
+used to set the variable. Since we have already set IMAGE_INSTALL
+variable in core-image-minimal before inheriting, bitbake will not
+change the content of IMAGE_INSTALL in core-image.bbclass. However, this
+bbclass sets postprocess command <em>rootfs_update_timestamp</em>, and a few
+others accordingly to IMAGE_FEATURES.</p>
+
+<p>The most important thing to mention here is that this class inherits
+<strong>image.bbclass</strong> in which most of the work is done.</p>
+
+<h3 id="where-the-magic-happens-imagebbclass">Where The Magic Happens, image.bbclass</h3>
+<p>Finally, this is where the magic happens. In short, an image is created from
+ipk, deb, or rpm packages (since ipk is used in this document, we are continuing
+with ipk). The list of packages that should be installed on the image is
+processed by package_ipk.bbclass and these packages are installed using <strong>opkg</strong>
+to the destination rootfs directory.</p>
+
+<p>Since image.bbclass is long, I will include only the portion of the codes that
+is important to understand image creation process. Please have a look at
+image.bbclass.</p>
+
+<p>To create the image/install the packages to rootfs directory, the packages that
+we wanted to install on the image should be built first. However, we haven’t
+defined any dependency so far, but only set IMAGE_INSTALL variable. </p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>meta/classes/image.bbclass</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">...
+</span><span class="line">RDEPENDS +<span class="o">=</span> <span class="s2">&quot;${IMAGE_INSTALL} ${LINGUAS_INSTALL} ${NORMAL_FEATURE_INSTALL} ${ROOTFS_BOOTSTRAP_INSTALL}&quot;</span>
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line"><span class="c"># definition of which packages should be installed on image. PACKAGE_INSTALL</span>
+</span><span class="line"><span class="c"># variable is used in rootfs creation code in rootfs_ipk.bbclass</span>
+</span><span class="line"><span class="nb">export </span>PACKAGE_INSTALL ?<span class="o">=</span> <span class="s2">&quot;${IMAGE_INSTALL} ${ROOTFS_BOOTSTRAP_INSTALL} ${FEATURE_INSTALL}&quot;</span>
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line">addtask rootfs before do_build
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>This class depends on IMAGE_INSTALL and other variables so that the
+packages are built first. The class also adds a new task named <em>rootfs</em>
+before the default task (do_build) in bitbake so that it gets run by
+bitbake when all other tasks of the dependencies are run. do_rootfs the
+starting point of the image creation process.</p>
+
+<p>After checking some dirs and creating, do_rootfs calls a corresponding
+rootfs creation code accordingly to package management type. In our
+example, it calls <strong>rootfs_ipk_do_rootfs</strong> command, which is defined in
+<strong>rootfs_ipk.bbclass</strong></p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>meta/classes/image.bbclass, do_rootfs()</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">rootfs_<span class="k">${</span><span class="nv">IMAGE_PKGTYPE</span><span class="k">}</span>_do_rootfs
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>rootfs_ipk_do_rootfs() creates required directories for opkg to work, writes
+some status files, and updates itself using <em>opk-cl update</em>. After setting
+variables that are processed by ipk internally, <strong>package_install_internal_ipk</strong>
+is called. When packages have been successfully installed, the postprocess
+commands that you defined are run. (zap_root_password, rootfs_update_timestamp,
+openssh_allow_empty_password, etc)</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>meta/classes/rootfs_ipk.bbclass, rootfs_ipk_do_rootfs()</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+<span class="line-number">15</span>
+<span class="line-number">16</span>
+<span class="line-number">17</span>
+<span class="line-number">18</span>
+<span class="line-number">19</span>
+<span class="line-number">20</span>
+<span class="line-number">21</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">...
+</span><span class="line">
+</span><span class="line"><span class="c">#install</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">INSTALL_PACKAGES_ATTEMPTONLY_IPK</span><span class="o">=</span><span class="s2">&quot;${PACKAGE_INSTALL_ATTEMPTONLY}&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">INSTALL_PACKAGES_LINGUAS_IPK</span><span class="o">=</span><span class="s2">&quot;${LINGUAS_INSTALL}&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">INSTALL_TASK_IPK</span><span class="o">=</span><span class="s2">&quot;rootfs&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="nb">export </span><span class="nv">INSTALL_ROOTFS_IPK</span><span class="o">=</span><span class="s2">&quot;${IMAGE_ROOTFS}&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">INSTALL_CONF_IPK</span><span class="o">=</span><span class="s2">&quot;${IPKGCONF_TARGET}&quot;</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">INSTALL_PACKAGES_IPK</span><span class="o">=</span><span class="s2">&quot;${PACKAGE_INSTALL}&quot;</span>
+</span><span class="line">
+</span><span class="line"><span class="c">#post install</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">D</span><span class="o">=</span><span class="k">${</span><span class="nv">IMAGE_ROOTFS</span><span class="k">}</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">OFFLINE_ROOT</span><span class="o">=</span><span class="k">${</span><span class="nv">IMAGE_ROOTFS</span><span class="k">}</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">IPKG_OFFLINE_ROOT</span><span class="o">=</span><span class="k">${</span><span class="nv">IMAGE_ROOTFS</span><span class="k">}</span>
+</span><span class="line"><span class="nb">export </span><span class="nv">OPKG_OFFLINE_ROOT</span><span class="o">=</span><span class="k">${</span><span class="nv">IPKG_OFFLINE_ROOT</span><span class="k">}</span>
+</span><span class="line">
+</span><span class="line">package_install_internal_ipk
+</span><span class="line">
+</span><span class="line">...
+</span><span class="line"><span class="k">${</span><span class="nv">ROOTFS_POSTPROCESS_COMMAND</span><span class="k">}</span>
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>It is now the duty of package_install_internal_ipk to install the packages to
+rootfs directory (namely into image). It’s defined in
+<strong>meta/classes/package_ipk.bbclass</strong>.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><figcaption><span>meta/classes/package_ipk.bbclass</span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+<span class="line-number">3</span>
+<span class="line-number">4</span>
+<span class="line-number">5</span>
+<span class="line-number">6</span>
+<span class="line-number">7</span>
+<span class="line-number">8</span>
+<span class="line-number">9</span>
+<span class="line-number">10</span>
+<span class="line-number">11</span>
+<span class="line-number">12</span>
+<span class="line-number">13</span>
+<span class="line-number">14</span>
+<span class="line-number">15</span>
+<span class="line-number">16</span>
+<span class="line-number">17</span>
+<span class="line-number">18</span>
+<span class="line-number">19</span>
+<span class="line-number">20</span>
+<span class="line-number">21</span>
+<span class="line-number">22</span>
+<span class="line-number">23</span>
+<span class="line-number">24</span>
+<span class="line-number">25</span>
+<span class="line-number">26</span>
+<span class="line-number">27</span>
+<span class="line-number">28</span>
+<span class="line-number">29</span>
+<span class="line-number">30</span>
+<span class="line-number">31</span>
+<span class="line-number">32</span>
+<span class="line-number">33</span>
+<span class="line-number">34</span>
+<span class="line-number">35</span>
+<span class="line-number">36</span>
+<span class="line-number">37</span>
+<span class="line-number">38</span>
+<span class="line-number">39</span>
+<span class="line-number">40</span>
+<span class="line-number">41</span>
+<span class="line-number">42</span>
+<span class="line-number">43</span>
+<span class="line-number">44</span>
+<span class="line-number">45</span>
+<span class="line-number">46</span>
+<span class="line-number">47</span>
+<span class="line-number">48</span>
+</pre></td><td class="code"><pre><code class="bash"><span class="line">....
+</span><span class="line">
+</span><span class="line"><span class="c"># install a bunch of packages using opkg</span>
+</span><span class="line"><span class="c"># the following shell variables needs to be set before calling this func:</span>
+</span><span class="line"><span class="c"># INSTALL_ROOTFS_IPK - install root dir</span>
+</span><span class="line"><span class="c"># INSTALL_CONF_IPK - configuration file</span>
+</span><span class="line"><span class="c"># INSTALL_PACKAGES_IPK - packages to be installed</span>
+</span><span class="line"><span class="c"># INSTALL_PACKAGES_ATTEMPTONLY_IPK - packages attemped to be installed only</span>
+</span><span class="line"><span class="c"># INSTALL_PACKAGES_LINGUAS_IPK - additional packages for uclibc</span>
+</span><span class="line"><span class="c"># INSTALL_TASK_IPK - task name</span>
+</span><span class="line">
+</span><span class="line">package_install_internal_ipk<span class="o">()</span> <span class="o">{</span>
+</span><span class="line">
+</span><span class="line">	<span class="nb">local </span><span class="nv">target_rootfs</span><span class="o">=</span><span class="s2">&quot;${INSTALL_ROOTFS_IPK}&quot;</span>
+</span><span class="line">	<span class="nb">local </span><span class="nv">conffile</span><span class="o">=</span><span class="s2">&quot;${INSTALL_CONF_IPK}&quot;</span>
+</span><span class="line">	<span class="nb">local </span><span class="nv">package_attemptonly</span><span class="o">=</span><span class="s2">&quot;${INSTALL_PACKAGES_ATTEMPTONLY_IPK}&quot;</span>
+</span><span class="line">	<span class="nb">local </span><span class="nv">package_linguas</span><span class="o">=</span><span class="s2">&quot;${INSTALL_PACKAGES_LINGUAS_IPK}&quot;</span>
+</span><span class="line">	<span class="nb">local </span><span class="nv">task</span><span class="o">=</span><span class="s2">&quot;${INSTALL_TASK_IPK}&quot;</span>
+</span><span class="line">
+</span><span class="line">	split_multilib_packages
+</span><span class="line">
+</span><span class="line">	<span class="nb">local </span><span class="nv">package_to_install</span><span class="o">=</span><span class="s2">&quot;${INSTALL_PACKAGES_NORMAL_IPK}&quot;</span>
+</span><span class="line">	<span class="nb">local </span><span class="nv">package_multilib</span><span class="o">=</span><span class="s2">&quot;${INSTALL_PACKAGES_MULTILIB_IPK}&quot;</span>
+</span><span class="line">
+</span><span class="line">	mkdir -p <span class="k">${</span><span class="nv">target_rootfs</span><span class="k">}${</span><span class="nv">localstatedir</span><span class="k">}</span>/lib/opkg/
+</span><span class="line">
+</span><span class="line">	<span class="nb">local </span><span class="nv">ipkg_args</span><span class="o">=</span><span class="s2">&quot;-f ${conffile} -o ${target_rootfs} --force-overwrite --force_postinstall --prefer-arch-to-version&quot;</span>
+</span><span class="line">
+</span><span class="line">	opkg-cl <span class="k">${</span><span class="nv">ipkg_args</span><span class="k">}</span> update
+</span><span class="line">
+</span><span class="line">	<span class="c"># Uclibc builds don&#39;t provide this stuff...</span>
+</span><span class="line">	<span class="k">if</span> <span class="o">[</span> x<span class="k">${</span><span class="nv">TARGET_OS</span><span class="k">}</span> <span class="o">=</span> <span class="s2">&quot;xlinux&quot;</span> <span class="o">]</span> <span class="o">||</span> <span class="o">[</span> x<span class="k">${</span><span class="nv">TARGET_OS</span><span class="k">}</span> <span class="o">=</span> <span class="s2">&quot;xlinux-gnueabi&quot;</span> <span class="o">]</span> ; <span class="k">then</span>
+</span><span class="line"><span class="k">		if</span> <span class="o">[</span> ! -z <span class="s2">&quot;${package_linguas}&quot;</span> <span class="o">]</span>; <span class="k">then</span>
+</span><span class="line"><span class="k">			for </span>i in <span class="k">${</span><span class="nv">package_linguas</span><span class="k">}</span>; <span class="k">do</span>
+</span><span class="line"><span class="k">				</span>opkg-cl <span class="k">${</span><span class="nv">ipkg_args</span><span class="k">}</span> install <span class="nv">$i</span>
+</span><span class="line">			<span class="k">done</span>
+</span><span class="line"><span class="k">		fi</span>
+</span><span class="line"><span class="k">	fi</span>
+</span><span class="line">
+</span><span class="line"><span class="k">	if</span> <span class="o">[</span> ! -z <span class="s2">&quot;${package_to_install}&quot;</span> <span class="o">]</span>; <span class="k">then</span>
+</span><span class="line"><span class="k">		</span>opkg-cl <span class="k">${</span><span class="nv">ipkg_args</span><span class="k">}</span> install <span class="k">${</span><span class="nv">package_to_install</span><span class="k">}</span>
+</span><span class="line">	<span class="k">fi</span>
+</span><span class="line">
+</span><span class="line"><span class="k">	if</span> <span class="o">[</span> ! -z <span class="s2">&quot;${package_attemptonly}&quot;</span> <span class="o">]</span>; <span class="k">then</span>
+</span><span class="line"><span class="k">		</span>opkg-cl <span class="k">${</span><span class="nv">ipkg_args</span><span class="k">}</span> install <span class="k">${</span><span class="nv">package_attemptonly</span><span class="k">}</span> &gt; <span class="s2">&quot;`dirname ${BB_LOGFILE}`/log.do_${task}_attemptonly.${PID}&quot;</span> <span class="o">||</span> <span class="nb">true</span>
+</span><span class="line"><span class="nb">	</span><span class="k">fi</span>
+</span><span class="line">
+</span><span class="line">...
+</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>As you see, package_install_internal_ipk creates
+<em>${target_rootfs}${localstatedir}/lib/opkg/</em> directory on the image and
+sets <em>${ipkg_args}</em> to use the directories and configuration files in
+target rootfs. Afterwards, packages are installed by opkg-cl to target
+rootfs as seen in line FIXME above.</p>
+
+<p><strong>FIXME:</strong> Where is repository for ipk packages defined? Where is the index file
+so that packages are found by ipk and are installed on target rootfs?</p>
+
+<h2 id="summary-1">Summary</h2>
+<p>Although we have not dig up all the code in detail, I wanted to give an
+overview of how image creation process is done. You now know the general
+workflow of open embedded when creating an image (core-image-minimal),
+which tasks are defined where, which are classes are inherited, how
+binary packages are formed (ipk, deb, rpm), and how an image is formed
+from these packages. With this general overview in your mind, you can
+easily read whatever code you want in detail without being lost in
+classes, recipes, and directory structures.</p>
+
+<p>I hope you find the document useful for understanding bitbake, and
+openembedded. Please do not hesitate to comment or e-mail me about the
+document for questions or suggestions.</p>
+
+<p>Eren Türkay, TA1AET
+(eren .–.-. hambedded.org)</p>
+
+<p>Istanbul / Turkey</p>
+
+]]></content>
+  </entry>
+  
+</feed>

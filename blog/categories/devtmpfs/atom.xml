@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: devtmpfs | Hambedded Linux]]></title>
+  <link href="http://hambedded-linux.github.com/blog/categories/devtmpfs/atom.xml" rel="self"/>
+  <link href="http://hambedded-linux.github.com/"/>
+  <updated>2013-08-20T15:21:28+02:00</updated>
+  <id>http://hambedded-linux.github.com/</id>
+  <author>
+    <name><![CDATA[Eren Türkay]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[Waiting For Removable Media Problem]]></title>
+    <link href="http://hambedded-linux.github.com/blog/2013/08/20/waiting-for-removable-media-problem/"/>
+    <updated>2013-08-20T10:38:00+02:00</updated>
+    <id>http://hambedded-linux.github.com/blog/2013/08/20/waiting-for-removable-media-problem</id>
+    <content type="html"><![CDATA[<p>While I was working on <a href="https://github.com/hambedded-linux/meta-alix3d3">BSP</a> for <a href="http://pcengines.ch/alix3d3.htm">ALIX 3D3</a>, I had to
+configure the kernel fragments for the board. I started with standard
+x86 kernel configuration provided by linux-yocto package. This standard
+configuration includes very basic fragments to at least boot a regular
+x86 system. For example, it enables network, usb, pci and sound.</p>
+
+<p>As <a href="http://pcengines.ch/alix3d3.htm">ALIX 3D3</a> is a compatible x86 machine, I got the standard
+configuration and enabled ALIX specific configuration such as CS5536
+companion chip, sound, AMD Geode random number generator, Geode LX
+Framebuffer, etc. After enabling these configuration, I built
+core-image-minimal live image and <a href="https://en.wikipedia.org/wiki/Dd_(Unix)">dd</a>‘ed the image into CF Card.
+After booting the machine, I saw that the boot process is stuck and the
+only thing in the screen is <strong>“waiting for removable media”</strong>.</p>
+
+<!--more-->
+
+<p>I knew that this was caused by the init script and took a look at the
+script. Clearly, it couldn’t find the disk (/dev/sda) and couldn’t find
+the root image in the disk afterwards. Later on, I checked dmesg output
+and there was nothing related with disks. Kernel could not probe them.
+After checking the kernel parameters, I enabled CS5536 PATA support. Now
+sda could be seen in the dmesg output. However, I still had the same
+problem even if there was no problem with the disks. My attention, then,
+was turned to udev.</p>
+
+<p>After hours of debugging udev and its rules, I found out that the udev
+version that I use <em>(&gt;= udev 182)</em> requires <strong>CONFIG_DEVTMPFS</strong> kernel
+parameter to be present to work properly. After adding the following
+kernel parameters, udev successfully probed/mounted disks and the boot
+process went OK.</p>
+
+<p><code>
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+</code></p>
+
+<p>When you are working on BSP, or kernel parameters, be sure to enable
+above parameters in the kernel. Otherwise, udev will not work properly.</p>
+
+<p>Happy hacking!</p>
+
+<p><em>PS: Yocto Project version is dylan. This blog post was written dylan branch
+in mind</em></p>
+
+]]></content>
+  </entry>
+  
+</feed>

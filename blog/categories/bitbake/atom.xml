@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+
+  <title><![CDATA[Category: bitbake | Hambedded Linux]]></title>
+  <link href="http://hambedded-linux.github.com/blog/categories/bitbake/atom.xml" rel="self"/>
+  <link href="http://hambedded-linux.github.com/"/>
+  <updated>2013-08-20T15:21:28+02:00</updated>
+  <id>http://hambedded-linux.github.com/</id>
+  <author>
+    <name><![CDATA[Eren Türkay]]></name>
+    
+  </author>
+  <generator uri="http://octopress.org/">Octopress</generator>
+
+  
+  <entry>
+    <title type="html"><![CDATA[From Bitbake Hello World To an Image]]></title>
+    <link href="http://hambedded-linux.github.com/blog/2012/11/24/from-bitbake-hello-world-to-an-image/"/>
+    <updated>2012-11-24T17:49:00+01:00</updated>
+    <id>http://hambedded-linux.github.com/blog/2012/11/24/from-bitbake-hello-world-to-an-image</id>
+    <content type="html"><![CDATA[Liquid error: undefined method `strip!' for nil:NilClass]]></content>
+  </entry>
+  
+</feed>

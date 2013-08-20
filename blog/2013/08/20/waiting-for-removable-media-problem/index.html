@@ -1,0 +1,206 @@
+
+<!DOCTYPE HTML>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Waiting For Removable Media Problem - Hambedded Linux</title>
+	<meta name="author" content="Eren Türkay">
+
+	
+	<meta name="description" content="While I was working on BSP for ALIX 3D3, I had to
+configure the kernel fragments for the board. I started with standard
+x86 kernel configuration &hellip;">
+	
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+	<link href="/atom.xml" rel="alternate" title="Hambedded Linux" type="application/atom+xml">
+	<link rel="canonical" href="">
+	<link href="/favicon.png" rel="shortcut icon">
+	<link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+	<!--[if lt IE 9]><script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+	<script src="//ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+	
+</head>
+
+<body>
+   <header id="header" class="inner"><h1><a href="/">Hambedded Linux</a></h1>
+<nav id="main-nav"><ul class="main">
+	<li><a href="/blog">Blog</a></li>
+	<li><a href="/contact">Contact</a></li>
+</ul>
+</nav>
+<nav id="mobile-nav">
+	<div class="alignleft menu">
+		<a class="button">Menu</a>
+		<div class="container"><ul class="main">
+	<li><a href="/blog">Blog</a></li>
+	<li><a href="/contact">Contact</a></li>
+</ul>
+</div>
+	</div>
+	<div class="alignright search">
+		<a class="button"></a>
+		<div class="container">
+			<form action="http://google.com/search" method="get">
+				<input type="text" name="q" results="0">
+				<input type="hidden" name="q" value="site:hambedded-linux.github.com">
+			</form>
+		</div>
+	</div>
+</nav>
+<nav id="sub-nav" class="alignright">
+	<div class="social">
+		
+		
+		
+		<a class="twitter" href="http://twitter.com/hambedded" title="Twitter">Twitter</a>
+		
+		
+		<a class="github" href="https://github.com/hambedded-linux" title="GitHub">GitHub</a>
+		
+		
+		
+		
+		
+		
+		<a class="rss" href="/atom.xml" title="RSS">RSS</a>
+		
+	</div>
+	<form class="search" action="http://google.com/search" method="get">
+		<input class="alignright" type="text" name="q" results="0">
+		<input type="hidden" name="q" value="site:hambedded-linux.github.com">
+	</form>
+</nav>
+
+</header>
+
+    
+	<div id="content" class="inner"><article class="post">
+	<h2 class="title">Waiting for Removable Media Problem</h2>
+	<div class="entry-content"><p>While I was working on <a href="https://github.com/hambedded-linux/meta-alix3d3">BSP</a> for <a href="http://pcengines.ch/alix3d3.htm">ALIX 3D3</a>, I had to
+configure the kernel fragments for the board. I started with standard
+x86 kernel configuration provided by linux-yocto package. This standard
+configuration includes very basic fragments to at least boot a regular
+x86 system. For example, it enables network, usb, pci and sound.</p>
+
+<p>As <a href="http://pcengines.ch/alix3d3.htm">ALIX 3D3</a> is a compatible x86 machine, I got the standard
+configuration and enabled ALIX specific configuration such as CS5536
+companion chip, sound, AMD Geode random number generator, Geode LX
+Framebuffer, etc. After enabling these configuration, I built
+core-image-minimal live image and <a href="https://en.wikipedia.org/wiki/Dd_(Unix)">dd</a>‘ed the image into CF Card.
+After booting the machine, I saw that the boot process is stuck and the
+only thing in the screen is <strong>“waiting for removable media”</strong>.</p>
+
+<!--more-->
+
+<p>I knew that this was caused by the init script and took a look at the
+script. Clearly, it couldn’t find the disk (/dev/sda) and couldn’t find
+the root image in the disk afterwards. Later on, I checked dmesg output
+and there was nothing related with disks. Kernel could not probe them.
+After checking the kernel parameters, I enabled CS5536 PATA support. Now
+sda could be seen in the dmesg output. However, I still had the same
+problem even if there was no problem with the disks. My attention, then,
+was turned to udev.</p>
+
+<p>After hours of debugging udev and its rules, I found out that the udev
+version that I use <em>(&gt;= udev 182)</em> requires <strong>CONFIG_DEVTMPFS</strong> kernel
+parameter to be present to work properly. After adding the following
+kernel parameters, udev successfully probed/mounted disks and the boot
+process went OK.</p>
+
+<div class="bogus-wrapper"><notextile><figure class="code"><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class="line-number">1</span>
+<span class="line-number">2</span>
+</pre></td><td class="code"><pre><code class=""><span class="line">CONFIG_DEVTMPFS=y
+</span><span class="line">CONFIG_DEVTMPFS_MOUNT=y</span></code></pre></td></tr></table></div></figure></notextile></div>
+
+<p>When you are working on BSP, or kernel parameters, be sure to enable
+above parameters in the kernel. Otherwise, udev will not work properly.</p>
+
+<p>Happy hacking!</p>
+
+<p><em>PS: Yocto Project version is dylan. This blog post was written dylan branch
+in mind</em></p>
+
+</div>
+
+
+<div class="meta">
+	<div class="date">
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2013-08-20T10:38:00+02:00" pubdate data-updated="true">Aug 20<span>th</span>, 2013</time></div>
+	<div class="tags">
+
+
+	<a class='category' href='/blog/categories/alix3d3/'>alix3d3</a>, <a class='category' href='/blog/categories/devtmpfs/'>devtmpfs</a>, <a class='category' href='/blog/categories/openembedded/'>openembedded</a>, <a class='category' href='/blog/categories/udev/'>udev</a>, <a class='category' href='/blog/categories/yocto/'>yocto</a>
+
+
+</div>
+	
+</div></article>
+
+	<div class="share">
+	<div class="addthis_toolbox addthis_default_style ">
+	
+	
+	<a class="addthis_button_tweet"></a>
+	
+	
+	<a class="addthis_counter addthis_pill_style"></a>
+	</div>
+  <script type="text/javascript" src="http://s7.addthis.com/js/250/addthis_widget.js#pubid="></script>
+</div>
+
+
+
+<section id="comment">
+    <h2 class="title">Comments</h2>
+    <div id="disqus_thread" aria-live="polite"><noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+</div>
+</section>
+</div>
+	<footer id="footer" class="inner">Copyright &copy; 2013
+
+    Eren Türkay
+
+</footer>
+	<script src="/javascripts/slash.js"></script>
+<script src="/javascripts/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+(function($){
+	$('.fancybox').fancybox();
+})(jQuery);
+</script> <!-- Delete or comment this line to disable Fancybox -->
+
+
+<script type="text/javascript">
+      var disqus_shortname = 'hambedded-linux';
+      
+        
+        // var disqus_developer = 1;
+        var disqus_identifier = 'http://hambedded-linux.github.com/blog/2013/08/20/waiting-for-removable-media-problem/';
+        var disqus_url = 'http://hambedded-linux.github.com/blog/2013/08/20/waiting-for-removable-media-problem/';
+        var disqus_script = 'embed.js';
+      
+    (function () {
+      var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+      dsq.src = 'http://' + disqus_shortname + '.disqus.com/' + disqus_script;
+      (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+    }());
+</script>
+
+
+
+
+
+</body>
+</html>
